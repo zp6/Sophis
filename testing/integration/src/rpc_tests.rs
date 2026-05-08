@@ -783,6 +783,51 @@ async fn sanity_test() {
                     rpc_client.stop_notify(id, PruningPointUtxoSetOverrideScope {}.into()).await.unwrap();
                 })
             }
+
+            // Phase 6 — Data Availability RPC (sub-fase 6.4).
+            // No DA carriers exist on a fresh simnet, so each call probes the
+            // happy path with a fabricated input and asserts the empty/None
+            // response shape. This is the same pattern as GetMempoolEntries.
+            SophisdPayloadOps::GetDaPayload => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_da_payload_call(None, GetDaPayloadRequest::new(vec![0xffu8; 48])).await.unwrap();
+                    assert!(response.entry.is_none());
+                })
+            }
+            SophisdPayloadOps::GetDaBundle => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_da_bundle_call(None, GetDaBundleRequest::new(vec![0xffu8; 48])).await.unwrap();
+                    assert!(response.bundle.is_none());
+                })
+            }
+            SophisdPayloadOps::GetDaCarriersByBlock => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_da_carriers_by_block_call(None, GetDaCarriersByBlockRequest::new(SIMNET_GENESIS.hash))
+                        .await
+                        .unwrap();
+                    assert!(response.payload_ids.is_empty());
+                })
+            }
+            SophisdPayloadOps::GetDaCarriersByDomain => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response =
+                        rpc_client.get_da_carriers_by_domain_call(None, GetDaCarriersByDomainRequest::new(0x20, 0)).await.unwrap();
+                    assert!(response.payload_ids.is_empty());
+                })
+            }
+            SophisdPayloadOps::GetDaPayloadStatus => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response =
+                        rpc_client.get_da_payload_status_call(None, GetDaPayloadStatusRequest::new(vec![0xffu8; 48])).await.unwrap();
+                    assert!(response.status.is_none());
+                })
+            }
         };
         tasks.push(task);
     }
