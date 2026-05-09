@@ -48,6 +48,7 @@ serde_json.workspace = true
 wasm-bindgen-test.workspace = true
 js-sys.workspace = true
 web-sys.workspace = true
+libcrux-ml-dsa.workspace = true
 
 [lints]
 workspace = true

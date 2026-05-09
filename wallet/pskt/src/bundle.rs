@@ -273,22 +273,40 @@ pub fn unlock_utxo_outputs_as_batch_transaction_pskb(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::{DILITHIUM44_SIG_SIZE, DILITHIUM44_VK_SIZE, DilithiumPubKey, Signature};
     use crate::prelude::*;
     use crate::role::Creator;
     use crate::role::*;
-    use secp256k1::Secp256k1;
-    use secp256k1::{Keypair, rand::thread_rng};
+    use libcrux_ml_dsa::ml_dsa_44;
     use sophis_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
-    use sophis_txscript::{multisig_redeem_script, pay_to_script_hash_script};
+    use sophis_txscript::pay_to_script_hash_script;
     use std::str::FromStr;
     use std::sync::LazyLock;
 
+    /// Two Dilithium keypairs derived from deterministic seeds for stable
+    /// test fixtures. Returns `((vk1, sk1), (vk2, sk2), redeem_script_mock)`.
+    ///
+    /// The redeem script here is a placeholder fixed-byte sequence — these
+    /// tests cover *bundle serialization*, not script execution. A real
+    /// Dilithium-aware multisig redeem script standard is a J1 / SCS Stack
+    /// concern (see `wallet/pskt/DESIGN.md` §8 and SIP-1).
+    type Keypair = ([u8; DILITHIUM44_VK_SIZE], [u8; 2560]);
     static CONTEXT: LazyLock<Box<([Keypair; 2], Vec<u8>)>> = LazyLock::new(|| {
-        let kps = [Keypair::new(&Secp256k1::new(), &mut thread_rng()), Keypair::new(&Secp256k1::new(), &mut thread_rng())];
-        let redeem_script: Vec<u8> =
-            multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2).expect("Test multisig redeem script");
-
-        Box::new((kps, redeem_script))
+        // Deterministic seeds — tests reproducible, no randomness leak across runs.
+        let seed_a: [u8; 32] = *b"PSBS_test_seed_alpha____________";
+        let seed_b: [u8; 32] = *b"PSBS_test_seed_beta_____________";
+        let kp_a = {
+            let kp = ml_dsa_44::generate_key_pair(seed_a);
+            (*kp.verification_key.as_ref(), *kp.signing_key.as_ref())
+        };
+        let kp_b = {
+            let kp = ml_dsa_44::generate_key_pair(seed_b);
+            (*kp.verification_key.as_ref(), *kp.signing_key.as_ref())
+        };
+        // Placeholder redeem script — opaque bytes, not consensus-valid by design.
+        // 32 bytes is plausible script size for early-stage tests.
+        let redeem_script: Vec<u8> = (0..32u8).collect();
+        Box::new(([kp_a, kp_b], redeem_script))
     });
 
     fn mock_context() -> &'static ([Keypair; 2], Vec<u8>) {
@@ -383,5 +401,133 @@ mod tests {
         bundle1.merge(bundle2);
 
         assert_eq!(bundle1.0.len(), 2);
+    }
+
+    /// Dilithium-aware tests added in K1.3 — exercise the new `crypto::*` types
+    /// inside a realistic PSBS workflow shape (Input.partial_sigs population,
+    /// Bundle round-trip serialization with a populated DilithiumPubKey/Signature).
+
+    #[test]
+    fn test_pskt_with_dilithium_partial_sig_roundtrip() {
+        let ([(vk_a, sk_a), _], redeem_script) = mock_context();
+
+        // Sign a fixed message with kp_a → produce a real Dilithium signature.
+        let signing_key = ml_dsa_44::MLDSA44SigningKey::new(*sk_a);
+        let randomness = [0xa5u8; libcrux_ml_dsa::SIGNING_RANDOMNESS_SIZE];
+        let signature_bytes = ml_dsa_44::sign(&signing_key, b"PSBS K1.3 test message", b"", randomness)
+            .expect("Dilithium sign");
+
+        // Build a PSKT with one input carrying this partial signature.
+        let pubkey = DilithiumPubKey::from_bytes(*vk_a);
+        let signature = Signature::dilithium_ml44_from_bytes(*signature_bytes.as_ref());
+
+        let pskt = PSKT::<Creator>::default().inputs_modifiable().outputs_modifiable();
+        let mut input_0 = InputBuilder::default()
+            .utxo_entry(UtxoEntry {
+                amount: 1_000_000_000,
+                script_public_key: pay_to_script_hash_script(redeem_script),
+                block_daa_score: 0,
+                is_coinbase: false,
+            })
+            .previous_outpoint(TransactionOutpoint {
+                transaction_id: TransactionId::from_str("0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                index: 0,
+            })
+            .sig_op_count(1)
+            .redeem_script(redeem_script.to_owned())
+            .build()
+            .expect("input builder");
+        input_0.partial_sigs.push((pubkey.clone(), signature.clone()));
+
+        let pskt = pskt.constructor().input(input_0);
+        let bundle = Bundle::from(pskt);
+
+        // Round-trip serialize → deserialize must preserve the (DilithiumPubKey, Signature) pair.
+        let serialized = bundle.serialize().expect("bundle serialize");
+        let deserialized = Bundle::deserialize(&serialized).expect("bundle deserialize");
+        assert_eq!(deserialized.0.len(), 1);
+
+        let inner = deserialized.0.first().expect("non-empty bundle");
+        assert_eq!(inner.inputs.len(), 1, "input count preserved");
+        let recovered = &inner.inputs[0].partial_sigs;
+        assert_eq!(recovered.len(), 1, "partial_sig count preserved");
+        assert_eq!(recovered[0].0, pubkey, "DilithiumPubKey preserved across serde round-trip");
+        assert_eq!(recovered[0].1, signature, "Signature preserved across serde round-trip");
+
+        // Verify the signature is itself valid (not just byte-identical).
+        let vk = ml_dsa_44::MLDSA44VerificationKey::new(*vk_a);
+        let sig_recovered = ml_dsa_44::MLDSA44Signature::new(*recovered[0].1.as_dilithium_ml44().expect("DilithiumML44 variant"));
+        ml_dsa_44::verify(&vk, b"PSBS K1.3 test message", b"", &sig_recovered).expect("Dilithium verify after serde round-trip");
+    }
+
+    #[test]
+    fn test_pskt_with_two_dilithium_partial_sigs_combine_dedup() {
+        let ([(vk_a, sk_a), (vk_b, sk_b)], redeem_script) = mock_context();
+
+        // Build two independent PSKTs, each signing the same input with a different key.
+        let mk_pskt_with_sig = |vk: &[u8; DILITHIUM44_VK_SIZE], sk: &[u8; 2560]| -> Bundle {
+            let signing_key = ml_dsa_44::MLDSA44SigningKey::new(*sk);
+            let randomness = [0x33u8; libcrux_ml_dsa::SIGNING_RANDOMNESS_SIZE];
+            let sig_bytes = ml_dsa_44::sign(&signing_key, b"shared message", b"", randomness).expect("sign");
+            let pubkey = DilithiumPubKey::from_bytes(*vk);
+            let signature = Signature::dilithium_ml44_from_bytes(*sig_bytes.as_ref());
+
+            let mut input_0 = InputBuilder::default()
+                .utxo_entry(UtxoEntry {
+                    amount: 500,
+                    script_public_key: pay_to_script_hash_script(redeem_script),
+                    block_daa_score: 0,
+                    is_coinbase: false,
+                })
+                .previous_outpoint(TransactionOutpoint {
+                    transaction_id: TransactionId::from_str("0000000000000000000000000000000000000000000000000000000000000002").unwrap(),
+                    index: 0,
+                })
+                .sig_op_count(2)
+                .redeem_script(redeem_script.to_owned())
+                .build()
+                .expect("input builder");
+            input_0.partial_sigs.push((pubkey, signature));
+            Bundle::from(PSKT::<Creator>::default().inputs_modifiable().outputs_modifiable().constructor().input(input_0))
+        };
+
+        let bundle_a = mk_pskt_with_sig(vk_a, sk_a);
+        let bundle_b = mk_pskt_with_sig(vk_b, sk_b);
+
+        // Sanity: both bundles serialize.
+        let _ = bundle_a.serialize().expect("A serialize");
+        let _ = bundle_b.serialize().expect("B serialize");
+
+        // Re-applying the same Bundle's first input to itself (via direct push +
+        // dedup combine logic in Input::Add) tests that duplicate pubkeys do not
+        // accumulate twice. We exercise the dedup contract from PSBS DESIGN §5.4.
+        let pubkey_a = DilithiumPubKey::from_bytes(*vk_a);
+        let pubkey_b = DilithiumPubKey::from_bytes(*vk_b);
+
+        let mut input = InputBuilder::default()
+            .utxo_entry(UtxoEntry {
+                amount: 500,
+                script_public_key: pay_to_script_hash_script(redeem_script),
+                block_daa_score: 0,
+                is_coinbase: false,
+            })
+            .previous_outpoint(TransactionOutpoint {
+                transaction_id: TransactionId::from_str("0000000000000000000000000000000000000000000000000000000000000003").unwrap(),
+                index: 0,
+            })
+            .sig_op_count(2)
+            .build()
+            .expect("input builder");
+
+        let dummy_sig = Signature::dilithium_ml44_from_bytes([0u8; DILITHIUM44_SIG_SIZE]);
+        input.partial_sigs.push((pubkey_a.clone(), dummy_sig.clone()));
+        input.partial_sigs.push((pubkey_b.clone(), dummy_sig.clone()));
+        // Duplicate entry of pubkey_a — combine should drop the second.
+        let mut rhs = input.clone();
+        rhs.partial_sigs.push((pubkey_a.clone(), dummy_sig.clone()));
+
+        let combined = (input + rhs).expect("combine succeeds");
+        // After combine, expect 2 sigs (pubkey_a + pubkey_b), not 3.
+        assert_eq!(combined.partial_sigs.len(), 2, "duplicate pubkey deduplicated by combine logic");
     }
 }
