@@ -27,6 +27,10 @@ use sophis_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use sophis_txscript::standard::{
     dilithium_address, dilithium_redeem_script, pay_to_address_script, pay_to_script_hash_signature_script,
 };
+use sophis_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+use sophis_wallet_pskt::bundle::Bundle;
+use sophis_wallet_pskt::crypto::{DILITHIUM44_SIG_SIZE, DilithiumPubKey, Signature as PsbsSignature};
+use sophis_wallet_pskt::prelude::{Creator, Finalizer, InputBuilder, OutputBuilder, PSKT, SignInputOk, Signer};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -715,6 +719,261 @@ async fn cmd_da_bundle(rpc_server: &str, bundle_id_hex: &str) {
     }
 }
 
+// ─── PSBS — Partially Signed Sophis Transactions (K1.4) ──────────────────────
+//
+// Cold-storage workflow:
+//   1. (online machine)  pskt create  — build PSBS w/ UTXOs+outputs, NO sigs
+//   2. (offline machine) pskt sign    — load wallet keys, sign each input
+//   3. (online machine)  pskt extract — finalize + serialize tx for broadcast
+//
+// Combine is a stub: trivial in single-sig (1 bundle == output bundle).
+// Real multisig path requires J1 (Account Abstraction) — see wallet/aa-spec/.
+
+/// Build an unsigned PSBS bundle and write it to `output_path`.
+async fn cmd_pskt_create(wallet_path: &PathBuf, rpc_server: &str, to_addr_str: &str, amount_sompi: u64, output_path: &PathBuf) {
+    let wallet = Wallet::load(wallet_path).expect("Wallet não encontrada");
+    let address = wallet.address().unwrap();
+    let vk_bytes = wallet.verification_key().unwrap();
+    let to_address = Address::try_from(to_addr_str.to_string()).expect("Endereço destino inválido");
+    let redeem_script = dilithium_redeem_script(&vk_bytes).expect("redeem script");
+
+    let rpc = connect(rpc_server).await;
+    let utxos = spendable_utxos(&rpc, &address).await;
+    if utxos.is_empty() {
+        println!("Nenhum UTXO maduro disponível.");
+        return;
+    }
+
+    let (est_fee, _, _) = calc_fee(&utxos[..1], amount_sompi);
+    let needed = amount_sompi + est_fee;
+    let total: u64 = utxos.iter().map(|(_, e)| e.amount).sum();
+    if total < needed {
+        println!("Saldo insuficiente: {} sompi disponível, {} necessário.", total, needed);
+        return;
+    }
+
+    let mut selected = vec![];
+    let mut acc = 0u64;
+    for (op, entry) in &utxos {
+        selected.push((*op, entry.clone()));
+        acc += entry.amount;
+        if acc >= needed {
+            break;
+        }
+    }
+    let (fee, ..) = calc_fee(&selected, amount_sompi);
+    let change = acc.saturating_sub(amount_sompi + fee);
+
+    // Build PSKT<Creator> → Constructor with inputs + outputs populated, no sigs.
+    let pskt = PSKT::<Creator>::default().inputs_modifiable().outputs_modifiable();
+    let mut constructor = pskt.constructor();
+
+    for (outpoint, entry) in &selected {
+        let input = InputBuilder::default()
+            .utxo_entry(entry.clone())
+            .previous_outpoint(*outpoint)
+            .sig_op_count(1)
+            .redeem_script(redeem_script.clone())
+            .build()
+            .expect("input builder");
+        constructor = constructor.input(input);
+    }
+
+    let payment_output = OutputBuilder::default()
+        .amount(amount_sompi)
+        .script_public_key(pay_to_address_script(&to_address))
+        .build()
+        .expect("output builder");
+    constructor = constructor.output(payment_output);
+
+    if change > 0 {
+        let change_output =
+            OutputBuilder::default().amount(change).script_public_key(pay_to_address_script(&address)).build().expect("change output");
+        constructor = constructor.output(change_output);
+    }
+
+    let bundle = Bundle::from(constructor);
+    let serialized = bundle.serialize().expect("bundle serialize");
+    std::fs::write(output_path, &serialized).expect("write file");
+
+    println!("PSBS criado.");
+    println!("  Inputs    : {} UTXOs ({} sompi)", selected.len(), acc);
+    println!("  Destino   : {}", to_addr_str);
+    println!("  Valor     : {} sompi  ({:.8} SPHS)", amount_sompi, amount_sompi as f64 / SOMPI_PER_SOPHIS as f64);
+    println!("  Fee       : {} sompi", fee);
+    if change > 0 {
+        println!("  Change    : {} sompi → {}", change, address);
+    }
+    println!("  Arquivo   : {}", output_path.display());
+    println!();
+    println!("Próximo passo (em máquina offline com chave):");
+    println!("  dilithium-wallet pskt sign --wallet <wallet> --input {} --output <signed.psbs>", output_path.display());
+}
+
+/// Load a PSBS bundle, sign each input with the wallet's Dilithium key,
+/// and write the signed bundle to `output_path`.
+fn cmd_pskt_sign(wallet_path: &PathBuf, input_path: &PathBuf, output_path: &PathBuf) {
+    use libcrux_ml_dsa::SIGNING_RANDOMNESS_SIZE;
+    use sophis_consensus_core::hashing::sighash::calc_signature_hash;
+
+    let wallet = Wallet::load(wallet_path).expect("Wallet não encontrada");
+    let vk_bytes = wallet.verification_key().unwrap();
+    let sk_bytes = wallet.signing_key().unwrap();
+
+    let serialized = std::fs::read_to_string(input_path).expect("read PSBS file");
+    let bundle = Bundle::deserialize(&serialized).expect("deserialize bundle");
+    if bundle.0.is_empty() {
+        eprintln!("Erro: bundle PSBS vazio.");
+        return;
+    }
+
+    let mut signed_bundle = Bundle::new();
+    let mut total_inputs_signed = 0usize;
+
+    for inner in bundle.0.iter().cloned() {
+        let pskt: PSKT<Signer> = PSKT::from(inner);
+        let signed = pskt
+            .pass_signature_sync(|tx, sighashes| -> std::result::Result<Vec<SignInputOk>, String> {
+                let reused = SigHashReusedValuesUnsync::new();
+                tx.tx
+                    .inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| {
+                        let sighash_type = sighashes[i];
+                        let sig_hash = calc_signature_hash(&tx.as_verifiable(), i, sighash_type, &reused);
+                        let signing_key = ml_dsa_44::MLDSA44SigningKey::new(sk_bytes);
+                        let mut randomness = [0u8; SIGNING_RANDOMNESS_SIZE];
+                        getrandom::getrandom(&mut randomness).map_err(|e| format!("rand: {}", e))?;
+                        let sig = ml_dsa_44::sign(&signing_key, &sig_hash.as_bytes()[..], b"", randomness)
+                            .map_err(|_| "Dilithium sign failed".to_string())?;
+                        randomness.iter_mut().for_each(|b| *b = 0);
+                        let sig_array: [u8; DILITHIUM44_SIG_SIZE] = *sig.as_ref();
+                        Ok(SignInputOk {
+                            signature: PsbsSignature::dilithium_ml44_from_bytes(sig_array),
+                            pub_key: DilithiumPubKey::from_bytes(vk_bytes),
+                            key_source: None,
+                        })
+                    })
+                    .collect()
+            })
+            .expect("pass_signature");
+
+        total_inputs_signed += signed.inputs.len();
+        signed_bundle.add_inner((*signed).clone());
+    }
+
+    let serialized_out = signed_bundle.serialize().expect("serialize signed bundle");
+    std::fs::write(output_path, &serialized_out).expect("write signed bundle");
+
+    println!("PSBS assinado.");
+    println!("  Inputs assinados : {}", total_inputs_signed);
+    println!("  Arquivo          : {}", output_path.display());
+    println!();
+    println!("Próximo passo (em máquina online):");
+    println!("  dilithium-wallet pskt extract --input {} --output <tx.json>", output_path.display());
+}
+
+/// Combine multiple PSBS files into one. Useful for multisig coordination.
+/// Single-sig case: trivial pass-through (only one input file).
+fn cmd_pskt_combine(input_paths: &[PathBuf], output_path: &PathBuf) {
+    if input_paths.is_empty() {
+        eprintln!("Erro: nenhum arquivo de entrada fornecido.");
+        return;
+    }
+
+    let mut accumulator: Option<Bundle> = None;
+    for (i, path) in input_paths.iter().enumerate() {
+        let serialized = std::fs::read_to_string(path).expect("read PSBS file");
+        let bundle = Bundle::deserialize(&serialized).expect("deserialize bundle");
+        match accumulator.take() {
+            None => accumulator = Some(bundle),
+            Some(mut acc) => {
+                // For single-sig case (input_paths.len() == 1) this branch never runs.
+                // Real multisig combine requires Combiner role logic per-PSKT (J1 work).
+                acc.merge(bundle);
+                accumulator = Some(acc);
+            }
+        }
+        println!("  ✓ carregado: {}", path.display());
+        if i == 0 && input_paths.len() == 1 {
+            println!("    (single input — combine é pass-through)");
+        }
+    }
+
+    let result = accumulator.expect("at least one input");
+    let serialized = result.serialize().expect("serialize");
+    std::fs::write(output_path, &serialized).expect("write");
+
+    println!();
+    println!("PSBS combinado.");
+    println!("  Inputs    : {} arquivos", input_paths.len());
+    println!("  Arquivo   : {}", output_path.display());
+    if input_paths.len() == 1 {
+        println!();
+        println!("Nota: combine real (multisig N-of-M) requer Account Abstraction (J1) —");
+        println!("      ver wallet/aa-spec/SPEC.md e wallet/aa-spec/templates/Recovery.template.rs.");
+    }
+}
+
+/// Finalize and extract the underlying Transaction from a signed PSBS,
+/// writing it as JSON to `output_path` for downstream broadcast.
+fn cmd_pskt_extract(input_path: &PathBuf, output_path: &PathBuf) {
+    let serialized = std::fs::read_to_string(input_path).expect("read PSBS file");
+    let bundle = Bundle::deserialize(&serialized).expect("deserialize bundle");
+    if bundle.0.is_empty() {
+        eprintln!("Erro: bundle vazio.");
+        return;
+    }
+
+    // Single-sig path: take the first PSKT in the bundle, finalize, extract.
+    let inner = bundle.0[0].clone();
+    let pskt_finalizer: PSKT<Finalizer> = PSKT::from(inner);
+
+    let finalized = pskt_finalizer
+        .finalize_sync(|inner: &sophis_wallet_pskt::pskt::Inner| -> std::result::Result<Vec<Vec<u8>>, String> {
+            inner
+                .inputs
+                .iter()
+                .enumerate()
+                .map(|(idx, input)| -> std::result::Result<Vec<u8>, String> {
+                    let partial_sig = input.partial_sigs.first().ok_or_else(|| format!("Input {} has no partial signature", idx))?;
+                    let sig_bytes = partial_sig.1.raw_bytes();
+                    if sig_bytes.len() != DILITHIUM44_SIG_SIZE {
+                        return Err(format!("Input {}: signature is {} bytes, expected {}", idx, sig_bytes.len(), DILITHIUM44_SIG_SIZE));
+                    }
+                    let mut sig_with_sighash: Vec<u8> = Vec::with_capacity(DILITHIUM44_SIG_SIZE + 1);
+                    sig_with_sighash.extend_from_slice(sig_bytes);
+                    sig_with_sighash.push(input.sighash_type.to_u8());
+
+                    let redeem_script = input.redeem_script.clone().ok_or_else(|| format!("Input {} missing redeem_script", idx))?;
+                    pay_to_script_hash_signature_script(redeem_script, sig_with_sighash).map_err(|e| format!("Input {}: {}", idx, e))
+                })
+                .collect()
+        })
+        .expect("finalize");
+
+    let extractor = finalized.extractor().expect("extractor");
+    let mutable_tx = extractor.extract_tx(&DEVNET_PARAMS).expect("extract_tx");
+    let tx = mutable_tx.tx;
+    let tx_id = {
+        let mut t = tx.clone();
+        t.finalize();
+        t.id()
+    };
+
+    let json = serde_json::to_string_pretty(&tx).expect("serialize tx");
+    std::fs::write(output_path, &json).expect("write tx file");
+
+    println!("Tx extraída.");
+    println!("  Tx ID     : {}", tx_id);
+    println!("  Inputs    : {}", tx.inputs.len());
+    println!("  Outputs   : {}", tx.outputs.len());
+    println!("  Arquivo   : {}", output_path.display());
+    println!();
+    println!("Próximo passo: broadcast da tx via RPC submit_transaction (manual ou ferramenta dedicada).");
+}
+
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -800,6 +1059,48 @@ async fn main() {
                         ),
                 ),
         )
+        .subcommand(
+            // K1.4 — Partially Signed Sophis Transactions (PSBS) cold-storage workflow.
+            // See wallet/pskt/DESIGN.md and wallet/pskt/SPEC (forthcoming).
+            Command::new("pskt")
+                .about("Cold-storage workflow PSBS — create / sign / combine / extract")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("create")
+                        .about("Constrói PSBS unsigned (online: precisa RPC pra UTXOs)")
+                        .arg(wallet_arg())
+                        .arg(rpc_arg())
+                        .arg(Arg::new("to").long("to").short('t').required(true))
+                        .arg(Arg::new("amount").long("amount").short('a').required(true).value_parser(value_parser!(u64)))
+                        .arg(Arg::new("output").long("output").short('o').required(true).help("Arquivo .psbs de saída")),
+                )
+                .subcommand(
+                    Command::new("sign")
+                        .about("Assina PSBS com chave Dilithium da wallet (offline: não precisa RPC)")
+                        .arg(wallet_arg())
+                        .arg(Arg::new("input").long("input").short('i').required(true).help("Arquivo .psbs de entrada"))
+                        .arg(Arg::new("output").long("output").short('o').required(true).help("Arquivo .psbs assinado de saída")),
+                )
+                .subcommand(
+                    Command::new("combine")
+                        .about("Combina N PSBS num único bundle (multisig coord; trivial em single-sig)")
+                        .arg(
+                            Arg::new("inputs")
+                                .long("inputs")
+                                .short('i')
+                                .required(true)
+                                .num_args(1..)
+                                .help("Arquivos .psbs separados por espaço"),
+                        )
+                        .arg(Arg::new("output").long("output").short('o').required(true).help("Arquivo .psbs combinado de saída")),
+                )
+                .subcommand(
+                    Command::new("extract")
+                        .about("Finaliza + extrai Transaction de PSBS assinado (single-sig path)")
+                        .arg(Arg::new("input").long("input").short('i').required(true).help("Arquivo .psbs assinado de entrada"))
+                        .arg(Arg::new("output").long("output").short('o').required(true).help("Arquivo .json de tx de saída")),
+                ),
+        )
         .get_matches();
 
     match m.subcommand() {
@@ -854,6 +1155,33 @@ async fn main() {
                 let s = ssub.get_one::<String>("rpcserver").unwrap();
                 let bid = ssub.get_one::<String>("bundle-id").unwrap();
                 cmd_da_bundle(s, bid).await;
+            }
+            _ => unreachable!(),
+        },
+        Some(("pskt", sub)) => match sub.subcommand() {
+            Some(("create", ssub)) => {
+                let w = PathBuf::from(ssub.get_one::<String>("wallet").unwrap());
+                let s = ssub.get_one::<String>("rpcserver").unwrap();
+                let t = ssub.get_one::<String>("to").unwrap();
+                let a = *ssub.get_one::<u64>("amount").unwrap();
+                let o = PathBuf::from(ssub.get_one::<String>("output").unwrap());
+                cmd_pskt_create(&w, s, t, a, &o).await;
+            }
+            Some(("sign", ssub)) => {
+                let w = PathBuf::from(ssub.get_one::<String>("wallet").unwrap());
+                let i = PathBuf::from(ssub.get_one::<String>("input").unwrap());
+                let o = PathBuf::from(ssub.get_one::<String>("output").unwrap());
+                cmd_pskt_sign(&w, &i, &o);
+            }
+            Some(("combine", ssub)) => {
+                let inputs: Vec<PathBuf> = ssub.get_many::<String>("inputs").unwrap().map(PathBuf::from).collect();
+                let o = PathBuf::from(ssub.get_one::<String>("output").unwrap());
+                cmd_pskt_combine(&inputs, &o);
+            }
+            Some(("extract", ssub)) => {
+                let i = PathBuf::from(ssub.get_one::<String>("input").unwrap());
+                let o = PathBuf::from(ssub.get_one::<String>("output").unwrap());
+                cmd_pskt_extract(&i, &o);
             }
             _ => unreachable!(),
         },

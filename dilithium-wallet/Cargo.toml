@@ -21,6 +21,7 @@ sophis-grpc-client.workspace = true
 sophis-notify.workspace = true
 sophis-rpc-core.workspace = true
 sophis-txscript.workspace = true
+sophis-wallet-pskt.workspace = true
 
 borsh.workspace = true
 clap = { workspace = true }
