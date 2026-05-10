@@ -1,253 +1,330 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
 <meta charset="utf-8" />
 <title>Sophis Mainnet — Public Launch Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  :root {
-    --bg: #0b0d10;
-    --panel: #131720;
-    --border: #1f2530;
-    --text: #d8dfe7;
-    --muted: #6c7785;
-    --accent: #4dd0a1;
-    --warning: #ffb454;
-    --danger: #f06a6a;
+<!-- I1.4 — Tailwind v3 + Alpine.js v3 via CDN per docs/I1_DASHBOARD_DESIGN.md §6.
+     No build step; the HTML is embedded into the binary at compile time. -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script>
+  // Tailwind config — dark theme default, brand-tinted palette, monospace
+  // numbers per §6.2 of DESIGN.
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        },
+        colors: {
+          panel: '#131720',
+          panel2: '#1a1f2a',
+          ink: '#0b0d10',
+          border1: '#1f2530',
+          accent: '#4dd0a1',
+          warn: '#ffb454',
+          danger: '#f06a6a',
+        },
+      },
+    },
+  };
+</script>
+<style type="text/tailwindcss">
+  @layer base {
+    body { @apply bg-ink text-slate-200 font-mono leading-relaxed; }
+    .num { font-variant-numeric: tabular-nums; }
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    line-height: 1.45;
-  }
-  header {
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    padding: 24px 32px;
-  }
-  header h1 {
-    margin: 0;
-    font-size: 22px;
-    letter-spacing: 0.3px;
-    font-weight: 600;
-  }
-  header .subtitle {
-    color: var(--muted);
-    font-size: 13px;
-    margin-top: 4px;
-  }
-  main {
-    padding: 32px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-  .banner {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px 24px;
-    margin-bottom: 24px;
-  }
-  .banner.in-window {
-    border-color: var(--warning);
-    background: linear-gradient(90deg, rgba(255,180,84,0.10), var(--panel));
-  }
-  .banner .label {
-    color: var(--muted);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .banner .value {
-    font-size: 32px;
-    font-weight: 600;
-    margin-top: 6px;
-  }
-  .banner .value.ok { color: var(--accent); }
-  .banner .value.warning { color: var(--warning); }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px 20px;
-  }
-  .card .label {
-    color: var(--muted);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .card .value {
-    font-size: 22px;
-    font-weight: 500;
-    margin-top: 6px;
-    word-break: break-all;
-  }
-  .card .sub {
-    color: var(--muted);
-    font-size: 12px;
-    margin-top: 4px;
-  }
-  .countdown {
-    font-variant-numeric: tabular-nums;
-  }
-  footer {
-    color: var(--muted);
-    font-size: 11px;
-    padding: 24px 32px;
-    border-top: 1px solid var(--border);
-    text-align: center;
-  }
-  .status {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: 2px;
-  }
-  .status.ok { background: var(--accent); }
-  .status.bad { background: var(--danger); }
-  code {
-    color: var(--muted);
-    font-family: inherit;
+  @layer components {
+    .card { @apply bg-panel border border-border1 rounded-lg p-5 transition-all; }
+    .card .label { @apply text-slate-500 text-xs uppercase tracking-widest; }
+    .card .value { @apply text-2xl font-medium mt-1.5 num; }
+    .card .sub { @apply text-slate-500 text-xs mt-1; }
+    .pill { @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] uppercase tracking-wider; }
+    .pill-ok { @apply bg-accent/10 text-accent border border-accent/30; }
+    .pill-warn { @apply bg-warn/10 text-warn border border-warn/30; }
+    .pill-danger { @apply bg-danger/10 text-danger border border-danger/30; }
+    .section-title { @apply text-slate-500 text-[11px] uppercase tracking-[2px] mt-8 mb-3; }
   }
 </style>
 </head>
-<body>
-<header>
-  <h1>Sophis Mainnet — Public Launch Dashboard</h1>
-  <div class="subtitle">Auto-refresh a cada 10 segundos · <span id="rpc-status"><span class="status bad"></span>aguardando primeiro poll…</span></div>
+<body x-data="dashboard()" x-init="poll(); setInterval(poll, 10000)">
+
+<!-- Sticky header with RPC health and theme toggle -->
+<header class="sticky top-0 z-10 bg-panel border-b border-border1 px-8 py-5 backdrop-blur">
+  <div class="max-w-6xl mx-auto flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-semibold tracking-wide">Sophis Mainnet — Public Launch Dashboard</h1>
+      <div class="text-slate-500 text-xs mt-0.5">
+        Auto-refresh 10s ·
+        <span class="pill" :class="m.rpc_healthy ? 'pill-ok' : 'pill-danger'">
+          <span class="w-1.5 h-1.5 rounded-full" :class="m.rpc_healthy ? 'bg-accent' : 'bg-danger'"></span>
+          <span x-text="m.rpc_healthy ? 'RPC saudável' : 'RPC offline'"></span>
+        </span>
+        <span class="text-danger ml-2" x-show="!m.rpc_healthy && m.last_rpc_error" x-text="m.last_rpc_error"></span>
+      </div>
+    </div>
+    <div class="text-slate-500 text-xs num" x-show="m.snapshot_unix_ms > 0">
+      snapshot age: <span x-text="snapshotAgeSecs(m)"></span>s
+    </div>
+  </div>
 </header>
 
-<main>
-  <div id="founder-banner" class="banner">
+<main class="max-w-6xl mx-auto px-8 py-8">
+
+  <!-- Hero — 24h founder window + cap status -->
+  <div class="card mb-6"
+       :class="m.founder_in_wait_window
+                 ? 'border-warn/50 bg-gradient-to-r from-warn/10 to-panel'
+                 : (m.founder_share_ratio < 0.05 ? '' : 'border-warn/50')">
     <div class="label">Founder share / 24h wait window</div>
-    <div class="value ok" id="founder-share-headline">—</div>
-    <div class="sub" id="founder-share-sub" style="color: var(--muted); font-size: 13px; margin-top: 8px;">aguardando dados…</div>
+    <div class="value text-3xl"
+         :class="m.founder_in_wait_window
+                   ? 'text-warn'
+                   : (m.founder_share_ratio < 0.05 ? 'text-accent' : 'text-warn')">
+      founder share = <span x-text="fmtPercent(m.founder_share_ratio)"></span>
+    </div>
+    <div class="sub mt-2" x-show="m.founder_in_wait_window">
+      Janela de 24h em curso. Tempo restante:
+      <span class="num text-warn" x-text="fmtSecs(m.seconds_until_founder_window_ends)"></span>.
+      Founder não minera durante esta janela.
+    </div>
+    <div class="sub mt-2" x-show="!m.founder_in_wait_window">
+      Janela de 24h encerrada. Cap auto-imposto: 5% lifetime
+      (script público faz auto-pause em 4.9%).
+    </div>
   </div>
 
-  <div class="grid">
+  <!-- Section 1: Network health -->
+  <div class="section-title">Network Health</div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="card">
-      <div class="label">Tempo desde o gênese</div>
-      <div class="value countdown" id="time-since-genesis">—</div>
-      <div class="sub" id="genesis-sub">—</div>
-    </div>
-    <div class="card">
-      <div class="label">Hashrate total da rede</div>
-      <div class="value" id="hashrate">—</div>
+      <div class="label">Hashrate total</div>
+      <div class="value" x-text="fmtHashrate(m.hashrate_hps)"></div>
       <div class="sub">derivado de difficulty × 10 BPS</div>
     </div>
     <div class="card">
-      <div class="label">Supply emitido</div>
-      <div class="value" id="supply">—</div>
-      <div class="sub">de 210.000.000 SPHS (teto rígido)</div>
+      <div class="label">BPS observado (60s)</div>
+      <div class="value" x-text="(m.bps_actual || 0).toFixed(2)"></div>
+      <div class="sub">target = 10 BPS</div>
     </div>
     <div class="card">
-      <div class="label">Balanço do endereço do fundador</div>
-      <div class="value" id="founder-balance">—</div>
+      <div class="label">Block count</div>
+      <div class="value" x-text="(m.block_count || 0).toLocaleString()"></div>
+      <div class="sub">DAG size</div>
+    </div>
+    <div class="card">
+      <div class="label">Virtual DAA score</div>
+      <div class="value" x-text="(m.virtual_daa_score || 0).toLocaleString()"></div>
+      <div class="sub">tip difficulty progress</div>
+    </div>
+  </div>
+
+  <!-- Section 2: Mempool -->
+  <div class="section-title">Mempool</div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="card">
+      <div class="label">Tx count</div>
+      <div class="value" x-text="(m.mempool_depth.tx_count || 0).toLocaleString()"></div>
+      <div class="sub" x-show="(m.mempool_depth.tx_count || 0) > 10000">
+        <span class="pill pill-warn">congestionado</span>
+      </div>
+      <div class="sub" x-show="(m.mempool_depth.tx_count || 0) <= 10000">
+        atualizado a cada 30s
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Mass total</div>
+      <div class="value" x-text="(m.mempool_depth.total_mass || 0).toLocaleString()"></div>
+      <div class="sub">soma de mass de cada tx no pool</div>
+    </div>
+    <div class="card">
+      <div class="label">Política de orphan pool</div>
+      <div class="value text-base">excluído</div>
+      <div class="sub">orphans não contam pra depth</div>
+    </div>
+  </div>
+
+  <!-- Section 3: Decentralisation -->
+  <div class="section-title">Decentralisation</div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="card">
+      <div class="label">Mineradores únicos (60min)</div>
+      <div class="value" x-text="(m.unique_miners_60min.distinct_addresses || 0).toLocaleString()"></div>
+      <div class="sub">
+        em <span x-text="(m.unique_miners_60min.blocks_observed || 0).toLocaleString()"></span> blocos
+        observados na janela rolante
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Founder share</div>
+      <div class="value"
+           :class="(m.founder_share_ratio || 0) < 0.05 ? 'text-accent' : 'text-warn'"
+           x-text="fmtPercent(m.founder_share_ratio)"></div>
       <div class="sub">cap auto-imposto: 5% lifetime</div>
     </div>
     <div class="card">
-      <div class="label">DAA score / blocos</div>
-      <div class="value" id="daa-score">—</div>
-      <div class="sub" id="block-count">—</div>
+      <div class="label">Founder balance</div>
+      <div class="value text-lg" x-text="fmtSompi(m.founder_balance_sompi)"></div>
+      <div class="sub">de <span x-text="fmtSompi(m.total_supply_sompi)"></span> emitidos</div>
+    </div>
+  </div>
+
+  <!-- Section 4: Top wallets -->
+  <div class="section-title">
+    Top 100 Wallets
+    <span class="pill pill-warn ml-2" x-show="m.top_100_wallets.approximate">aproximado</span>
+  </div>
+  <div class="card">
+    <div class="text-slate-500 text-xs mb-3" x-show="m.top_100_wallets.caveat" x-text="m.top_100_wallets.caveat"></div>
+    <div class="text-slate-500 text-xs mb-3" x-show="m.top_100_wallets.refreshed_unix_ms > 0">
+      última atualização:
+      <span class="num" x-text="new Date(m.top_100_wallets.refreshed_unix_ms).toLocaleString('pt-BR')"></span>
+      · próxima em até 5 min
+    </div>
+    <div x-show="(m.top_100_wallets.entries || []).length === 0" class="text-slate-500 text-sm py-4">
+      Aguardando primeira coleta. Refresh ocorre 5 min após o startup do dashboard.
+    </div>
+    <table x-show="(m.top_100_wallets.entries || []).length > 0" class="w-full text-sm">
+      <thead class="text-slate-500 text-[11px] uppercase tracking-wider">
+        <tr>
+          <th class="text-left py-2 pr-4 w-12">#</th>
+          <th class="text-left py-2 pr-4">Endereço</th>
+          <th class="text-right py-2 num">Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="entry in (m.top_100_wallets.entries || [])" :key="entry.rank">
+          <tr class="border-t border-border1 hover:bg-panel2">
+            <td class="py-2 pr-4 text-slate-500 num" x-text="entry.rank"></td>
+            <td class="py-2 pr-4 break-all text-slate-300" x-text="entry.address"></td>
+            <td class="py-2 text-right num" x-text="fmtSompi(entry.balance_sompi)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Section 5: Finality -->
+  <div class="section-title">Finality</div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="card">
+      <div class="label">Blue score (proxy: virtual DAA)</div>
+      <div class="value" x-text="(m.finality_probability.blue_score_now || 0).toLocaleString()"></div>
+      <div class="sub">tip-relative depth</div>
+    </div>
+    <div class="card sm:col-span-2">
+      <div class="label">99.9% finality label</div>
+      <div class="value text-base" x-text="m.finality_probability.label || '—'"></div>
+      <div class="sub">configurável via --finality-blue-blocks; default = 100 (= coinbase_maturity)</div>
+    </div>
+  </div>
+
+  <!-- Section 6: Time + chain identity -->
+  <div class="section-title">Genesis &amp; Identity</div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="card">
+      <div class="label">Tempo desde o gênese</div>
+      <div class="value num" x-text="m.genesis_unix_ms > 0 ? fmtSecs(m.seconds_since_genesis) : '—'"></div>
+      <div class="sub" x-text="m.genesis_unix_ms > 0
+                                  ? 'gênese em ' + new Date(m.genesis_unix_ms).toISOString()
+                                  : 'gênese ainda não configurado'"></div>
+    </div>
+    <div class="card">
+      <div class="label">Supply emitido</div>
+      <div class="value" x-text="fmtSompi(m.total_supply_sompi)"></div>
+      <div class="sub">de 210.000.000 SPHS (teto rígido)</div>
     </div>
     <div class="card">
       <div class="label">Endereço de mineração do fundador</div>
-      <div class="value" id="founder-address" style="font-size: 13px;">—</div>
-      <div class="sub">declarado publicamente em T-72h, imutável</div>
+      <div class="value text-xs break-all" x-text="m.founder_address || '—'"></div>
+      <div class="sub">declarado em T-72h, imutável</div>
     </div>
   </div>
+
 </main>
 
-<footer>
+<footer class="text-slate-500 text-xs px-8 py-6 border-t border-border1 text-center">
   <div>Sophis ($SPHS) · BlockDAG L1 pós-quântico de fair-launch</div>
-  <div>Dashboard auto-hospedado · <code>GET /metrics</code> retorna JSON cru</div>
+  <div class="mt-1">
+    Dashboard auto-hospedado · <code class="text-slate-400">GET /metrics</code> retorna JSON cru
+    · <code class="text-slate-400">GET /healthz</code> = 200 OK
+  </div>
 </footer>
 
 <script>
-function fmtSecs(secs) {
-  if (secs < 0) return "—";
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-function fmtSompi(v) {
-  if (typeof v !== "number") return "—";
-  const sphs = v / 1e8;
-  return `${sphs.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} SPHS`;
-}
-function fmtHashrate(hps) {
-  if (typeof hps !== "number" || hps <= 0) return "—";
-  if (hps >= 1e12) return (hps / 1e12).toFixed(2) + " TH/s";
-  if (hps >= 1e9) return (hps / 1e9).toFixed(2) + " GH/s";
-  if (hps >= 1e6) return (hps / 1e6).toFixed(2) + " MH/s";
-  if (hps >= 1e3) return (hps / 1e3).toFixed(2) + " KH/s";
-  return hps + " H/s";
-}
-function fmtPercent(r) {
-  if (typeof r !== "number") return "—";
-  return (r * 100).toFixed(4) + "%";
-}
+  // Alpine.js component — single source of truth for the polled snapshot.
+  // Keeps every derivation a pure function over `m` so reactivity is
+  // straightforward and the JSON shape is the only contract with the
+  // backend (`MetricsSnapshot` in main.rs).
+  function dashboard() {
+    return {
+      m: {
+        // Default shape so x-text/x-show work before the first poll.
+        rpc_healthy: false,
+        last_rpc_error: null,
+        snapshot_unix_ms: 0,
+        genesis_unix_ms: 0,
+        seconds_since_genesis: 0,
+        seconds_until_founder_window_ends: 0,
+        founder_in_wait_window: false,
+        hashrate_hps: 0,
+        total_supply_sompi: 0,
+        founder_balance_sompi: 0,
+        founder_share_ratio: 0,
+        block_count: 0,
+        virtual_daa_score: 0,
+        founder_address: '',
+        founder_wait_window_secs: 86400,
+        bps_actual: 0,
+        mempool_depth: { tx_count: 0, total_mass: 0, include_orphans: false },
+        finality_probability: { blue_score_now: 0, blue_blocks_for_99_9: 100, label: '' },
+        unique_miners_60min: { distinct_addresses: 0, blocks_observed: 0, window_seconds: 3600 },
+        top_100_wallets: { entries: [], sampling_window_blocks: 0, refreshed_unix_ms: 0, approximate: true, caveat: '' },
+      },
 
-async function poll() {
-  try {
-    const res = await fetch("/metrics");
-    if (!res.ok) throw new Error("status " + res.status);
-    const m = await res.json();
+      async poll() {
+        try {
+          const res = await fetch('/metrics');
+          if (!res.ok) throw new Error('status ' + res.status);
+          this.m = Object.assign({}, this.m, await res.json());
+        } catch (e) {
+          this.m = Object.assign({}, this.m, { rpc_healthy: false, last_rpc_error: 'fetch /metrics: ' + e });
+        }
+      },
 
-    document.getElementById("rpc-status").innerHTML = m.rpc_healthy
-      ? '<span class="status ok"></span>RPC saudável'
-      : `<span class="status bad"></span>RPC offline${m.last_rpc_error ? ' — ' + m.last_rpc_error : ''}`;
-
-    // Founder banner: in 24h window → show countdown + share = 0%; após → share atual.
-    const banner = document.getElementById("founder-banner");
-    const headline = document.getElementById("founder-share-headline");
-    const sub = document.getElementById("founder-share-sub");
-    if (m.founder_in_wait_window) {
-      banner.classList.add("in-window");
-      headline.className = "value warning";
-      headline.textContent = "founder share = " + fmtPercent(m.founder_share_ratio);
-      const remain = m.seconds_until_founder_window_ends;
-      sub.textContent = `Janela de 24h em curso. Tempo restante: ${fmtSecs(remain)}. Founder não minera durante esta janela.`;
-    } else {
-      banner.classList.remove("in-window");
-      headline.className = "value " + (m.founder_share_ratio < 0.05 ? "ok" : "warning");
-      headline.textContent = "founder share = " + fmtPercent(m.founder_share_ratio);
-      sub.textContent = `Janela de 24h encerrada. Cap auto-imposto: 5% lifetime (script público faz auto-pause em 4.9%).`;
-    }
-
-    // Cards
-    document.getElementById("time-since-genesis").textContent =
-      m.genesis_unix_ms > 0 ? fmtSecs(m.seconds_since_genesis) : "—";
-    document.getElementById("genesis-sub").textContent =
-      m.genesis_unix_ms > 0
-        ? `gênese em ${new Date(m.genesis_unix_ms).toISOString()}`
-        : "gênese ainda não configurado";
-    document.getElementById("hashrate").textContent = fmtHashrate(m.hashrate_hps);
-    document.getElementById("supply").textContent = fmtSompi(m.total_supply_sompi);
-    document.getElementById("founder-balance").textContent = fmtSompi(m.founder_balance_sompi);
-    document.getElementById("daa-score").textContent = (m.virtual_daa_score || 0).toLocaleString();
-    document.getElementById("block-count").textContent = (m.block_count || 0).toLocaleString() + " blocos";
-    document.getElementById("founder-address").textContent = m.founder_address || "—";
-  } catch (e) {
-    document.getElementById("rpc-status").innerHTML = '<span class="status bad"></span>erro ao buscar /metrics: ' + e;
+      // ─── formatters ──────────────────────────────────────────────────────
+      fmtSecs(secs) {
+        if (typeof secs !== 'number' || secs < 0) return '—';
+        const h = Math.floor(secs / 3600);
+        const mm = Math.floor((secs % 3600) / 60);
+        const s = Math.floor(secs % 60);
+        return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      },
+      fmtSompi(v) {
+        if (typeof v !== 'number') return '—';
+        const sphs = v / 1e8;
+        return `${sphs.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} SPHS`;
+      },
+      fmtHashrate(hps) {
+        if (typeof hps !== 'number' || hps <= 0) return '—';
+        if (hps >= 1e12) return (hps / 1e12).toFixed(2) + ' TH/s';
+        if (hps >= 1e9) return (hps / 1e9).toFixed(2) + ' GH/s';
+        if (hps >= 1e6) return (hps / 1e6).toFixed(2) + ' MH/s';
+        if (hps >= 1e3) return (hps / 1e3).toFixed(2) + ' KH/s';
+        return hps + ' H/s';
+      },
+      fmtPercent(r) {
+        if (typeof r !== 'number') return '—';
+        return (r * 100).toFixed(4) + '%';
+      },
+      snapshotAgeSecs(m) {
+        if (!m.snapshot_unix_ms) return '—';
+        return Math.max(0, Math.floor((Date.now() - m.snapshot_unix_ms) / 1000));
+      },
+    };
   }
-}
-
-poll();
-setInterval(poll, 10000);
 </script>
 </body>
 </html>
