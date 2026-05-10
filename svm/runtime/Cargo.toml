@@ -20,6 +20,7 @@ dashmap.workspace = true
 
 [dev-dependencies]
 wat = "1"
+sophis-hashes.workspace = true
 
 [lints]
 workspace = true

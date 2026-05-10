@@ -1,6 +1,7 @@
 pub mod capability;
 pub mod deploy;
 pub mod error;
+pub mod events;
 pub mod gas;
 pub mod manifest;
 pub mod mint_policy;

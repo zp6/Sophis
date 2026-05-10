@@ -34,6 +34,14 @@ pub enum Capability {
     /// that use ALT references rather than inline scripts.
     /// See `docs/L1_ALT_DESIGN.md` §8 (sVM integration).
     ResolveAlt,
+    /// J4 — emit a structured event log from a sVM contract. Payload is
+    /// `topic_count(1) || topics[32 * count] || data_len(4) || data[..]`
+    /// (see `events::parse_emission_payload`). Events accumulate in
+    /// `ExecutionContext.events` and are persisted by the consensus
+    /// commit hook (J4.4) into the four `EventsBy*` RocksDB indexes.
+    /// Strictly additive — does not affect transaction wire format or
+    /// state roots. See `docs/J4_EVENTS_DESIGN.md`.
+    EmitEvent,
 }
 
 impl std::fmt::Display for Capability {
@@ -48,6 +56,7 @@ impl std::fmt::Display for Capability {
             Self::VerifyPlonky3Proof => write!(f, "VerifyPlonky3Proof"),
             Self::VerifyDataAvailability => write!(f, "VerifyDataAvailability"),
             Self::ResolveAlt => write!(f, "ResolveAlt"),
+            Self::EmitEvent => write!(f, "EmitEvent"),
         }
     }
 }

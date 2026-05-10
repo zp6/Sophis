@@ -26,6 +26,27 @@ pub struct ExecutionContext {
     /// injects `SophisAltBackend` (bound to `DbAltStore`) at the
     /// transaction-validator layer. Sub-fase L1.4.
     pub alt: Arc<dyn HostAlt>,
+    /// J4 — identifier of the contract whose code is currently executing,
+    /// stamped onto every event the contract emits via `sophis_emit_event`.
+    /// `[0u8; 32]` in unit tests / wasm sandbox; the consensus transaction
+    /// validator (J4.4) populates the real `ContractId` from the spending
+    /// Contract UTXO before invoking the executor.
+    pub contract_id: [u8; 32],
+    /// J4 — events buffered during execution by `sophis_emit_event`.
+    /// Each entry carries `(contract_id, topics, data)`; the chain-coordinate
+    /// fields (`tx_id`, `tx_index`, `log_index`, `block_hash`, `daa_score`)
+    /// are filled at commit time (J4.4) once they are known.
+    pub events: Vec<BufferedEvent>,
+}
+
+/// Runtime-internal buffered event. Mirrors the consensus-core `EventLog`
+/// shape minus the chain-coordinate fields, which the runtime cannot know
+/// at emission time. Promoted to `EventLog` by the J4.4 commit hook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferedEvent {
+    pub contract_id: [u8; 32],
+    pub topics: Vec<[u8; 32]>,
+    pub data: Vec<u8>,
 }
 
 impl ExecutionContext {
@@ -47,6 +68,8 @@ impl ExecutionContext {
             crypto,
             da: Arc::new(StubDa),
             alt: Arc::new(StubAlt),
+            contract_id: [0u8; 32],
+            events: Vec::new(),
         }
     }
 
@@ -72,6 +95,8 @@ impl ExecutionContext {
             crypto,
             da,
             alt: Arc::new(StubAlt),
+            contract_id: [0u8; 32],
+            events: Vec::new(),
         }
     }
 
@@ -87,7 +112,28 @@ impl ExecutionContext {
         da: Arc<dyn HostDa>,
         alt: Arc<dyn HostAlt>,
     ) -> Self {
-        Self { input_utxos, output_utxos, block_height, gas_used: Gas::default(), gas_config, manifest, crypto, da, alt }
+        Self {
+            input_utxos,
+            output_utxos,
+            block_height,
+            gas_used: Gas::default(),
+            gas_config,
+            manifest,
+            crypto,
+            da,
+            alt,
+            contract_id: [0u8; 32],
+            events: Vec::new(),
+        }
+    }
+
+    /// J4 — set the contract identifier stamped onto emitted events.
+    /// Builder-style chain method used by the consensus transaction
+    /// validator after one of the `new*` constructors. Tests that don't
+    /// care leave the default `[0u8; 32]`.
+    pub fn with_contract_id(mut self, contract_id: [u8; 32]) -> Self {
+        self.contract_id = contract_id;
+        self
     }
 
     pub fn check_capability(&self, cap: &Capability) -> Result<(), sophis_svm_core::SvmError> {

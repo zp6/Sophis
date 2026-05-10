@@ -38,6 +38,14 @@ impl SvmEngine {
     pub fn config(&self) -> &RuntimeConfig {
         &self.config
     }
+
+    /// Borrows the underlying Wasmtime engine. Used by integration tests
+    /// that need to compile a `Module` and instantiate it directly without
+    /// going through `ContractExecutor` (which only exposes a boolean
+    /// validation result, not the host-fn return value).
+    pub fn inner(&self) -> &Engine {
+        &self.inner
+    }
 }
 
 impl std::fmt::Debug for SvmEngine {

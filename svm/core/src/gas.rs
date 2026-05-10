@@ -19,6 +19,14 @@ pub const GAS_DA_VERIFY: u64 = 2_000;
 /// the DA case because no confirmation bookkeeping happens. Calibrate
 /// post-devnet.
 pub const GAS_ALT_RESOLVE: u64 = 1_500;
+/// J4 — fixed cost of emitting one event. Frozen ABI; matches the value
+/// declared in `docs/J4_EVENTS_DESIGN.md` and exposed in the J4 memory
+/// index (constants frozen ABI).
+pub const GAS_EVENT_EMIT_BASE: u64 = 1_000;
+/// J4 — per-byte cost of the `data` payload of an emitted event.
+/// Topics are not metered separately — they are bounded to 4 × 32 bytes
+/// max and carry a fixed ceiling. Frozen ABI.
+pub const GAS_EVENT_EMIT_PER_BYTE: u64 = 8;
 
 /// Minimum SOF deposit to create a Contract UTXO (storage rent, refunded on spend).
 pub const STORAGE_BASE_DEPOSIT: u64 = 100_000_000; // sompi
@@ -55,6 +63,8 @@ pub struct GasConfig {
     pub plonky3_verify_cost: u64,
     pub da_verify_cost: u64,
     pub alt_resolve_cost: u64,
+    pub event_emit_base_cost: u64,
+    pub event_emit_per_byte_cost: u64,
 }
 
 impl Default for GasConfig {
@@ -70,6 +80,8 @@ impl Default for GasConfig {
             plonky3_verify_cost: GAS_PLONKY3_VERIFY,
             da_verify_cost: GAS_DA_VERIFY,
             alt_resolve_cost: GAS_ALT_RESOLVE,
+            event_emit_base_cost: GAS_EVENT_EMIT_BASE,
+            event_emit_per_byte_cost: GAS_EVENT_EMIT_PER_BYTE,
         }
     }
 }

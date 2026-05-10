@@ -8001,6 +8001,7 @@ dependencies = [
  "dashmap",
  "log",
  "sophis-database",
+ "sophis-hashes",
  "sophis-svm-core",
  "thiserror 1.0.64",
  "wasmparser 0.224.1",

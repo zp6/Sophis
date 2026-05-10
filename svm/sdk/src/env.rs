@@ -34,6 +34,29 @@ extern "C" {
         pubvals_len: i32,
         air_id_ptr: i32, // 32 bytes, no length
     ) -> i32;
+    // J4 — emit a structured event log
+    fn sophis_emit_event(payload_ptr: i32, payload_len: i32) -> i32;
+}
+
+/// J4 — frozen ABI mirror of `sophis_svm_core::events::*` constants.
+/// Duplicated here because the SDK is a no-deps wasm32 crate and must
+/// not pull `sophis-svm-core` (which carries serde + hashes). Any change
+/// requires a hard fork — keep in lockstep with svm-core/events.
+pub const MAX_TOPICS_PER_EVENT: u8 = 4;
+pub const EVENT_TOPIC_LEN: usize = 32;
+pub const MAX_EVENT_DATA_BYTES: u32 = 4_096;
+
+/// J4 — non-zero status returned by `Env::emit_event`. Numbering matches
+/// the host fn (`-1`..`-6`); kept positive here so callers can compare
+/// in safe arithmetic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitEventError {
+    CapabilityMissing = 1,
+    GasExhausted = 2,
+    TopicCountTooLarge = 3,
+    DataTooLarge = 4,
+    StructuralError = 5,
+    PerTxCapReached = 6,
 }
 
 /// The contract execution environment — provides access to all sVM host APIs.
@@ -170,6 +193,63 @@ impl Env {
         {
             let _ = (seal, journal, image_id);
             false
+        }
+    }
+
+    /// Emit a structured event log (J4 — `EmitEvent` capability required).
+    ///
+    /// - `topics`: zero up to `MAX_TOPICS_PER_EVENT` (= 4) 32-byte topics.
+    ///   By convention `topics[0]` is the event signature hash.
+    /// - `data`:   payload bytes; capped at `MAX_EVENT_DATA_BYTES` (= 4096).
+    ///
+    /// Returns `Ok(())` if the host accepted the event. Returns
+    /// `Err(EmitEventError::*)` mirroring the host fn status code on any
+    /// rejection. Outside WASM (off-chain dev), always returns `Ok(())`.
+    ///
+    /// Encoding is performed in-place into a small stack buffer when the
+    /// payload fits (≤ 256 bytes) and falls back to a heap allocation
+    /// otherwise.
+    pub fn emit_event(&self, topics: &[[u8; EVENT_TOPIC_LEN]], data: &[u8]) -> Result<(), EmitEventError> {
+        // SDK-side guards mirror the parser; they let producer bugs fail
+        // fast instead of round-tripping through the host fn.
+        if topics.len() > MAX_TOPICS_PER_EVENT as usize {
+            return Err(EmitEventError::TopicCountTooLarge);
+        }
+        if data.len() > MAX_EVENT_DATA_BYTES as usize {
+            return Err(EmitEventError::DataTooLarge);
+        }
+
+        let topic_count = topics.len() as u8;
+        let total = 1usize + topics.len() * EVENT_TOPIC_LEN + 4 + data.len();
+        let mut buf: Vec<u8> = Vec::with_capacity(total);
+        buf.push(topic_count);
+        for t in topics {
+            buf.extend_from_slice(t);
+        }
+        buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        buf.extend_from_slice(data);
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let status = unsafe { sophis_emit_event(buf.as_ptr() as i32, buf.len() as i32) };
+            match status {
+                0 => Ok(()),
+                -1 => Err(EmitEventError::CapabilityMissing),
+                -2 => Err(EmitEventError::GasExhausted),
+                -3 => Err(EmitEventError::TopicCountTooLarge),
+                -4 => Err(EmitEventError::DataTooLarge),
+                -5 => Err(EmitEventError::StructuralError),
+                -6 => Err(EmitEventError::PerTxCapReached),
+                // Any other value is a host-fn ABI bug; treat as structural.
+                _ => Err(EmitEventError::StructuralError),
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Off-chain test/dev: pretend the host accepted. The buffer was
+            // already shape-checked above.
+            let _ = buf;
+            Ok(())
         }
     }
 

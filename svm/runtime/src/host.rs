@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use wasmtime::{AsContext, AsContextMut, Caller, Linker};
 
+use sophis_svm_core::events::{
+    EventError, MAX_EVENTS_PER_TX, parse_emission_payload,
+};
 use sophis_svm_core::{Capability, Gas};
 
-use crate::context::ExecutionContext;
+use crate::context::{BufferedEvent, ExecutionContext};
 use crate::error::{RuntimeError, RuntimeResult};
 
 /// Phase 6 — Data Availability backend.
@@ -317,6 +320,73 @@ pub fn register_host_functions(linker: &mut Linker<ExecutionContext>, crypto: Ar
                     return -6;
                 }
                 spk_version as i32
+            },
+        )
+        .map_err(|e| RuntimeError::InstantiationFailed(e.to_string()))?;
+
+    // sophis_emit_event(payload_ptr, payload_len) -> i32
+    //
+    // Emits a structured event log from the running sVM contract. Payload
+    // wire format is documented in `sophis-svm-core::events`:
+    //   topic_count(1) || topics[32 * count] || data_len(4 LE) || data[..]
+    //
+    // Args:
+    //   payload_ptr : *const u8 — start of the emission payload in guest memory
+    //   payload_len : i32       — length of the emission payload
+    //
+    // Returns: i32
+    //   0    success — event appended to ExecutionContext.events
+    //  -1    capability not granted (`Capability::EmitEvent` missing)
+    //  -2    gas exhaustion
+    //  -3    topic_count > MAX_TOPICS_PER_EVENT (= 4)
+    //  -4    data_len > MAX_EVENT_DATA_BYTES (= 4096)
+    //  -5    memory read out of bounds OR structural payload error
+    //        (truncated / length mismatch / payload_len < 0)
+    //  -6    per-tx event cap reached (= MAX_EVENTS_PER_TX = 32)
+    linker
+        .func_wrap(
+            "env",
+            "sophis_emit_event",
+            |mut caller: Caller<ExecutionContext>, payload_ptr: i32, payload_len: i32| -> i32 {
+                if caller.data().check_capability(&Capability::EmitEvent).is_err() {
+                    return -1;
+                }
+                // Per-tx cap is checked before we charge gas so a contract
+                // hitting the cap wastes nothing.
+                if caller.data().events.len() >= MAX_EVENTS_PER_TX {
+                    return -6;
+                }
+                // Reject negative or absurd lengths before touching memory.
+                if payload_len < 0 {
+                    return -5;
+                }
+                // Charge gas based on declared length up-front. The data-byte
+                // share covers worst-case before we know the parsed data_len;
+                // if the parser later rejects the payload the gas is still
+                // burned (matches the convention used by `verify_dilithium`
+                // and friends).
+                let base = caller.data().gas_config.event_emit_base_cost;
+                let per_byte = caller.data().gas_config.event_emit_per_byte_cost;
+                let cost = base.saturating_add(per_byte.saturating_mul(payload_len as u64));
+                if caller.data_mut().charge(Gas(cost)).is_err() {
+                    return -2;
+                }
+                let Some(payload) = read_one(&mut caller, payload_ptr, payload_len) else {
+                    return -5;
+                };
+                let parsed = match parse_emission_payload(&payload) {
+                    Ok(p) => p,
+                    Err(EventError::TopicCountOutOfRange(_)) => return -3,
+                    Err(EventError::DataTooLarge { .. }) => return -4,
+                    Err(EventError::Truncated { .. } | EventError::LengthMismatch { .. }) => return -5,
+                };
+                let contract_id = caller.data().contract_id;
+                caller.data_mut().events.push(BufferedEvent {
+                    contract_id,
+                    topics: parsed.topics,
+                    data: parsed.data,
+                });
+                0
             },
         )
         .map_err(|e| RuntimeError::InstantiationFailed(e.to_string()))?;
