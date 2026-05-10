@@ -38,6 +38,7 @@ use clap::{Arg, Command, value_parser};
 use serde::Serialize;
 use sophis_addresses::Address;
 use sophis_grpc_client::GrpcClient;
+use sophis_hashes::Hash;
 use sophis_notify::subscription::context::SubscriptionContext;
 use sophis_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use tokio::sync::RwLock;
@@ -59,6 +60,22 @@ const BPS_WINDOW_TICKS: usize = 6;
 /// Matches the mainnet `coinbase_maturity` so the "safe to spend"
 /// guarantee at depth N also satisfies the finality label.
 const DEFAULT_FINALITY_BLUE_BLOCKS: u64 = 100;
+
+/// I1.2 — rolling window for unique-miners counting. Frozen at 60 min
+/// per design D3. Operators wanting a different window must wait for a
+/// `--miners-window-secs` CLI flag (deferred per D3 menu option C).
+const MINERS_WINDOW_SECS: u64 = 3600;
+/// I1.2 — soft cap on the miner buffer; with a saturated 10 BPS chain
+/// the steady-state size is ~36k entries. Cap at 50k to absorb bursts
+/// without unbounded growth.
+const MINERS_BUF_CAP: usize = 50_000;
+
+/// I1.2 — type alias for the miner ring buffer entries. Keeps clippy's
+/// `type_complexity` lint happy and lets the snapshot-derivation helper
+/// (`distinct_in_window`) and the storage handle (`AppState.miner_buf`)
+/// share a single source-of-truth shape.
+type MinerSample = (u64, Vec<u8>);
+type MinerBuf = VecDeque<MinerSample>;
 
 #[derive(Clone, Serialize, Default)]
 struct MetricsSnapshot {
@@ -126,6 +143,22 @@ struct MetricsSnapshot {
     /// is informational — wallets that need cryptographic-grade finality
     /// should use a chain-block proof, not this number.
     pub finality_probability: FinalityLabel,
+
+    /// I1.2 — rolling 60-min decentralisation gauge: distinct coinbase
+    /// recipient script-public-keys observed in the last hour, plus the
+    /// raw block count for context.
+    pub unique_miners_60min: UniqueMinersWindow,
+}
+
+/// I1.2 — rolling-window decentralisation snapshot. See §4.4 of
+/// `docs/I1_DASHBOARD_DESIGN.md`. Counts deduplicate by raw
+/// `script_public_key.script` bytes (no need to derive bech32 addresses
+/// — the count is what matters; the bytes are stable cross-tick).
+#[derive(Clone, Serialize, Default, Debug, PartialEq, Eq)]
+pub struct UniqueMinersWindow {
+    pub distinct_addresses: usize,
+    pub blocks_observed: usize,
+    pub window_seconds: u64,
 }
 
 /// I1.1 — mempool snapshot exposed at `/metrics`. See §4.2 of DESIGN.
@@ -172,6 +205,15 @@ struct AppState {
     /// poll can include the freshest known value without re-polling
     /// mempool itself.
     mempool: Arc<RwLock<MempoolDepth>>,
+    /// I1.2 — rolling buffer of `(unix_ms, coinbase_spk_script_bytes)`
+    /// for the last `MINERS_WINDOW_SECS` (= 3600s) of accepted blocks.
+    /// Polled on the same sub-cycle as mempool (every 30s) via
+    /// `get_blocks(low_hash=last_seen_block, true)`.
+    miner_buf: Arc<RwLock<MinerBuf>>,
+    /// I1.2 — `low_hash` cursor passed to the next `get_blocks` call.
+    /// `None` until the first poll; updated to the latest tip after
+    /// each successful pull.
+    last_seen_block: Arc<RwLock<Option<Hash>>>,
 }
 
 async fn connect_grpc(rpc_server: &str) -> GrpcClient {
@@ -317,15 +359,41 @@ async fn poller_task(
                 }
             }
         }
-        // I1.1 — mempool poll runs on a sub-cycle (every 30s by default).
+        // I1.1 / I1.2 — sub-cycle: mempool + miner-buffer top-up.
+        // Both run on the same tick boundary (every 30s by default) so
+        // we don't compound RPC pressure with two independent cadences.
         if tick.is_multiple_of(MEMPOOL_POLL_EVERY_N_TICKS) && snap.rpc_healthy {
             match poll_mempool(&rpc).await {
                 Ok(mp) => *state.mempool.write().await = mp,
                 Err(e) => log::warn!("mempool poll failed: {e}"),
             }
+            // I1.2 — pull blocks accepted since `last_seen_block`, append
+            // each coinbase output's spk_script to the miner buffer.
+            let cursor = *state.last_seen_block.read().await;
+            match poll_recent_blocks(&rpc, cursor).await {
+                Ok((entries, new_tip)) => {
+                    if !entries.is_empty() {
+                        let mut buf = state.miner_buf.write().await;
+                        for entry in entries {
+                            buf.push_back(entry);
+                            if buf.len() > MINERS_BUF_CAP {
+                                buf.pop_front();
+                            }
+                        }
+                    }
+                    *state.last_seen_block.write().await = new_tip;
+                }
+                Err(e) => log::warn!("recent-blocks poll failed: {e}"),
+            }
         }
         // Always include the most recent (possibly stale) mempool snapshot.
         snap.mempool_depth = state.mempool.read().await.clone();
+        // I1.2 — distinct-miner count is derived on every emission so the
+        // 1-hour eviction is enforced even when no new blocks arrived.
+        snap.unique_miners_60min = {
+            let mut buf = state.miner_buf.write().await;
+            distinct_in_window(&mut buf, snap.snapshot_unix_ms)
+        };
         *state.metrics.write().await = snap;
         tick = tick.wrapping_add(1);
         tokio::time::sleep(POLL_INTERVAL).await;
@@ -343,6 +411,56 @@ async fn poll_mempool(rpc: &GrpcClient) -> Result<MempoolDepth, String> {
     let tx_count = entries.len();
     let total_mass: u64 = entries.iter().map(|e| e.transaction.mass).sum();
     Ok(MempoolDepth { tx_count, total_mass, include_orphans: false })
+}
+
+/// I1.2 — pulls every block accepted since `low_hash` (inclusive cursor
+/// semantics: the call returns blocks newer than `low_hash`; the first
+/// call with `low_hash = None` returns the head block). For each block,
+/// extracts the coinbase transaction's output script-public-key bytes
+/// and pairs them with the current wall-clock for the miner ring buffer.
+///
+/// Returns `(emitted_entries, new_tip_hash)`. The new tip hash is the
+/// last block in the response; the caller stores it for the next call.
+async fn poll_recent_blocks(rpc: &GrpcClient, low_hash: Option<Hash>) -> Result<(Vec<MinerSample>, Option<Hash>), String> {
+    let resp = tokio::time::timeout(RPC_TIMEOUT, rpc.get_blocks(low_hash, true, true))
+        .await
+        .map_err(|_| "get_blocks timeout".to_string())?
+        .map_err(|e| format!("get_blocks: {e}"))?;
+
+    let now = now_unix_ms();
+    let mut emitted: Vec<MinerSample> = Vec::new();
+    for block in &resp.blocks {
+        // Coinbase tx is structurally `block.transactions[0]` per
+        // `consensus_core::tx::COINBASE_TRANSACTION_INDEX`. Each output's
+        // script-public-key counts as one miner-identity sample.
+        let Some(coinbase) = block.transactions.first() else { continue };
+        for output in &coinbase.outputs {
+            emitted.push((now, output.script_public_key.script().to_vec()));
+        }
+    }
+    // The `block_hashes` field of GetBlocksResponse is ordered same as
+    // `blocks`; the new tip is the last entry. If the response is empty
+    // we keep the previous cursor.
+    let new_tip = resp.block_hashes.last().copied().or(low_hash);
+    Ok((emitted, new_tip))
+}
+
+/// I1.2 — counts distinct entries in the miner ring buffer after evicting
+/// anything older than `now - MINERS_WINDOW_SECS`. Pure function; the
+/// caller is responsible for holding the buffer lock for the duration.
+fn distinct_in_window(buf: &mut MinerBuf, now_ms: u64) -> UniqueMinersWindow {
+    let horizon_ms = now_ms.saturating_sub(MINERS_WINDOW_SECS.saturating_mul(1000));
+    while let Some(&(ts, _)) = buf.front() {
+        if ts >= horizon_ms {
+            break;
+        }
+        buf.pop_front();
+    }
+    let mut seen: std::collections::HashSet<&[u8]> = std::collections::HashSet::new();
+    for (_, spk) in buf.iter() {
+        seen.insert(spk.as_slice());
+    }
+    UniqueMinersWindow { distinct_addresses: seen.len(), blocks_observed: buf.len(), window_seconds: MINERS_WINDOW_SECS }
 }
 
 fn now_unix_ms() -> u64 {
@@ -431,6 +549,8 @@ async fn main() {
         metrics: Arc::new(RwLock::new(MetricsSnapshot::default())),
         bps_buf: Arc::new(RwLock::new(VecDeque::with_capacity(BPS_WINDOW_TICKS + 1))),
         mempool: Arc::new(RwLock::new(MempoolDepth::default())),
+        miner_buf: Arc::new(RwLock::new(VecDeque::with_capacity(MINERS_BUF_CAP))),
+        last_seen_block: Arc::new(RwLock::new(None)),
     };
 
     // Spawn the poller in the background.
@@ -578,5 +698,77 @@ mod tests {
         // After a single (mock) update the field carries the value.
         let snap2 = MetricsSnapshot { bps_actual: 10.0, ..MetricsSnapshot::default() };
         assert!(snap2.bps_actual > 0.0);
+    }
+
+    // ─── I1.2 — unique miners 60min ─────────────────────────────────────────
+
+    #[test]
+    fn distinct_in_window_dedupes_by_script_bytes() {
+        let mut buf: MinerBuf = VecDeque::new();
+        let now: u64 = 10_000_000;
+        // Three blocks; two distinct miners (A appears twice).
+        let a = vec![0xAAu8; 36];
+        let b = vec![0xBBu8; 36];
+        buf.push_back((now - 100, a.clone()));
+        buf.push_back((now - 50, b.clone()));
+        buf.push_back((now - 10, a));
+        let w = distinct_in_window(&mut buf, now);
+        assert_eq!(w.distinct_addresses, 2);
+        assert_eq!(w.blocks_observed, 3);
+        assert_eq!(w.window_seconds, MINERS_WINDOW_SECS);
+    }
+
+    #[test]
+    fn distinct_in_window_evicts_older_than_horizon() {
+        let mut buf: MinerBuf = VecDeque::new();
+        let now: u64 = 10_000_000;
+        // 5 entries; 3 outside the 1-hour window must be evicted.
+        let outside = now.saturating_sub((MINERS_WINDOW_SECS + 100).saturating_mul(1000));
+        let inside = now.saturating_sub(60_000); // 60s ago — well inside
+        buf.push_back((outside, vec![1; 4]));
+        buf.push_back((outside + 1, vec![2; 4]));
+        buf.push_back((outside + 2, vec![3; 4]));
+        buf.push_back((inside, vec![4; 4]));
+        buf.push_back((inside + 100, vec![5; 4]));
+        let w = distinct_in_window(&mut buf, now);
+        // Only the 2 inside-window entries remain
+        assert_eq!(w.blocks_observed, 2);
+        assert_eq!(w.distinct_addresses, 2);
+        assert_eq!(buf.len(), 2);
+    }
+
+    #[test]
+    fn distinct_in_window_empty_returns_zero() {
+        let mut buf: MinerBuf = VecDeque::new();
+        let w = distinct_in_window(&mut buf, 1_000_000);
+        assert_eq!(w.distinct_addresses, 0);
+        assert_eq!(w.blocks_observed, 0);
+        assert_eq!(w.window_seconds, MINERS_WINDOW_SECS);
+    }
+
+    #[test]
+    fn distinct_in_window_all_outside_returns_zero() {
+        let mut buf: MinerBuf = VecDeque::new();
+        let now: u64 = 10_000_000;
+        let stale = now.saturating_sub((MINERS_WINDOW_SECS + 1).saturating_mul(1000));
+        buf.push_back((stale, vec![1; 4]));
+        buf.push_back((stale + 1, vec![2; 4]));
+        let w = distinct_in_window(&mut buf, now);
+        assert_eq!(w.distinct_addresses, 0);
+        assert_eq!(w.blocks_observed, 0);
+        assert!(buf.is_empty(), "all-stale buffer must be fully drained");
+    }
+
+    #[test]
+    fn unique_miners_serializes_at_top_level() {
+        let snap = MetricsSnapshot {
+            unique_miners_60min: UniqueMinersWindow { distinct_addresses: 47, blocks_observed: 36_000, window_seconds: 3600 },
+            ..Default::default()
+        };
+        let j = serde_json::to_value(&snap).expect("serialize");
+        let um = j.get("unique_miners_60min").expect("unique_miners_60min field");
+        assert_eq!(um.get("distinct_addresses").and_then(|v| v.as_u64()), Some(47));
+        assert_eq!(um.get("blocks_observed").and_then(|v| v.as_u64()), Some(36_000));
+        assert_eq!(um.get("window_seconds").and_then(|v| v.as_u64()), Some(3600));
     }
 }

@@ -17,6 +17,7 @@ path = "src/main.rs"
 sophis-addresses.workspace = true
 sophis-core.workspace = true
 sophis-grpc-client.workspace = true
+sophis-hashes.workspace = true
 sophis-notify.workspace = true
 sophis-rpc-core.workspace = true
 
