@@ -1,4 +1,8 @@
 use crate::{
+    alt::{
+        ALT_HEADER_LEN, ALT_STORAGE_MASS_FACTOR, AltScriptKind, BASE_ALT_CREATION_MASS, classify_alt_script,
+        parse_alt_creation_header,
+    },
     config::params::Params,
     constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
     subnets::SUBNETWORK_ID_SIZE,
@@ -262,7 +266,28 @@ impl MassCalculator {
         let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
         let total_sigops_mass = total_sigops * self.mass_per_sig_op;
 
-        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass;
+        // L1 — surcharge for ALT-creation outputs (`docs/L1_ALT_DESIGN.md` §6).
+        // Per-creation: BASE_ALT_CREATION_MASS (100_000) plus
+        // payload_bytes * ALT_STORAGE_MASS_FACTOR (1) on top of the existing
+        // per-byte transient charge. payload_bytes = entries section
+        // (script.len() - ALT_HEADER_LEN); structurally well-formed by the
+        // isolation validator, so a parse failure here is treated as zero
+        // surcharge (not an error — the validator would have rejected the
+        // tx already if the header were malformed).
+        let alt_creation_mass: u64 = tx
+            .outputs
+            .iter()
+            .filter_map(|output| {
+                let script = output.script_public_key.script();
+                if classify_alt_script(script) != Some(AltScriptKind::Creation) {
+                    return None;
+                }
+                let payload_bytes = parse_alt_creation_header(script).ok().map(|_| (script.len() - ALT_HEADER_LEN) as u64).unwrap_or(0);
+                Some(BASE_ALT_CREATION_MASS + payload_bytes.saturating_mul(ALT_STORAGE_MASS_FACTOR))
+            })
+            .sum();
+
+        let compute_mass = compute_mass_for_size + total_script_public_key_mass + total_sigops_mass + alt_creation_mass;
         let transient_mass = size * TRANSIENT_BYTE_TO_MASS_FACTOR;
 
         NonContextualMasses::new(compute_mass, transient_mass)

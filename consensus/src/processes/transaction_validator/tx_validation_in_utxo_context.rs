@@ -1,6 +1,8 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
+use crate::model::stores::alt::AltStoreReader;
 use rayon::ThreadPool;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use sophis_consensus_core::alt::{AltHandleHash, AltScriptKind, classify_alt_script, parse_alt_reference};
 use sophis_consensus_core::{
     hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction},
@@ -75,6 +77,7 @@ impl TransactionValidator {
             self.check_mass_commitment(tx)?;
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
+        self.check_alt_references(tx)?;
 
         // The following call is not a consensus check (it could not be one in the first place since it uses a floating number)
         // but rather a mempool Replace by Fee validation rule. It is placed here purposely for avoiding unneeded script checks.
@@ -147,12 +150,72 @@ impl TransactionValidator {
         Ok(total_out)
     }
 
+    /// Lowercase-hex of a 6-byte ALT handle, used inside diagnostics.
+    /// Inlined here so the consensus crate does not need a hex util dep.
+    fn fmt_hex_handle(bytes: &[u8; 6]) -> String {
+        let mut out = String::with_capacity(12);
+        for b in bytes {
+            use std::fmt::Write as _;
+            let _ = write!(&mut out, "{b:02x}");
+        }
+        out
+    }
+
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let calculated_contextual_mass =
             self.mass_calculator.calc_contextual_masses(tx).ok_or(TxRuleError::MassIncomputable)?.storage_mass;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
+        }
+        Ok(())
+    }
+
+    /// L1 — enforce rules 15 & 16 of `docs/L1_ALT_DESIGN.md` §5: every ALT
+    /// reference output (script[0] == 0xFD) must resolve to an existing
+    /// `AltEntry` whose `entry_count` strictly exceeds the cited `index`.
+    ///
+    /// Skipped silently when the validator was constructed without an
+    /// `alt_store` handle (test / lite-build configurations). Production
+    /// validators MUST attach the store via `SvmContext::with_alt_store`
+    /// or dangling references would be silently accepted.
+    ///
+    /// Errors are converted via `to_string`-of-handle so the CLI / RPC
+    /// surface gets a readable diagnostic without the consensus crate
+    /// depending on hex-formatting helpers.
+    fn check_alt_references(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+        let Some(alt_store) = self.svm.as_ref().and_then(|svm| svm.alt_store.as_ref()) else {
+            return Ok(()); // alt_store not wired — skip rules 15-16
+        };
+        for (i, output) in tx.outputs().iter().enumerate() {
+            let script = output.script_public_key.script();
+            if classify_alt_script(script) != Some(AltScriptKind::Reference) {
+                continue;
+            }
+            // The structural check (rule 14) was enforced at isolation
+            // time; here `parse_alt_reference` is guaranteed to succeed,
+            // but we re-enter the parser defensively rather than reach
+            // into the byte slice manually.
+            let r = parse_alt_reference(script)
+                .map_err(|e| TxRuleError::AltReferenceMalformed(i, e.to_string()))?;
+            let handle = AltHandleHash::new(r.handle);
+            // Rule 15 — handle must exist in the consensus ALT registry.
+            let entry = match alt_store.get_entry(handle) {
+                Ok(Some(e)) => e,
+                Ok(None) => {
+                    return Err(TxRuleError::AltReferenceDanglingHandle(i, Self::fmt_hex_handle(&r.handle)));
+                }
+                Err(e) => {
+                    // Treat store I/O errors as malformed-reference for now;
+                    // higher-level retry policies live above this layer.
+                    return Err(TxRuleError::AltReferenceMalformed(i, format!("alt_store error: {e}")));
+                }
+            };
+            // Rule 16 — index must be strictly less than entry_count.
+            let count = entry.entry_count();
+            if (r.index as u16) >= count {
+                return Err(TxRuleError::AltReferenceIndexOutOfRange(i, r.index, count));
+            }
         }
         Ok(())
     }
@@ -540,5 +603,59 @@ mod tests {
     #[test]
     fn test_sign_schnorr_removed() {
         // Schnorr-based test_sign removed. See crypto/txscript/src/lib.rs for Dilithium signing tests.
+    }
+
+    // ----------------------------------------------------------------
+    // L1 — sub-fase L1.3.b sanity: check_alt_references must silently
+    // accept ALT references when no `alt_store` is wired (test / lite
+    // build path). Full integration coverage with a real alt_store lives
+    // in L1.7 adversarial tests.
+    // ----------------------------------------------------------------
+
+    #[test]
+    fn check_alt_references_skips_without_alt_store() {
+        use sophis_consensus_core::alt::encode_alt_reference_script;
+
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new_for_tests(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity(),
+            params.ghostdag_k(),
+            Default::default(),
+        );
+        // No svm context attached, so alt_store is None -> rule 15-16 are
+        // silently skipped. Build a v=1 tx whose output is an ALT reference
+        // citing a totally fake handle: the function must NOT error.
+        let prev = TransactionId::from_str("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
+        let tx = Transaction::new(
+            1, // v=1
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev, index: 0 },
+                signature_script: vec![],
+                sequence: 0,
+                sig_op_count: 0,
+            }],
+            vec![TransactionOutput {
+                value: 100,
+                script_public_key: ScriptPublicKey::new(0, SmallVec::from(encode_alt_reference_script([0xFFu8; 6], 7).to_vec())),
+            }],
+            0,
+            SubnetworkId::from_bytes([0u8; 20]),
+            0,
+            vec![],
+        );
+        // Mass commitment irrelevant for this isolated check.
+        tx.set_mass(0);
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry { amount: 1_000, script_public_key: ScriptPublicKey::new(0, SmallVec::new()), block_daa_score: 0, is_coinbase: false }],
+        );
+        // The validator's check_alt_references is `pub(crate)` indirectly
+        // via the impl block; call it through the private module path.
+        tv.check_alt_references(&populated_tx).expect("alt_store=None must skip rules 15-16");
     }
 }

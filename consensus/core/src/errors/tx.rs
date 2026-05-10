@@ -154,6 +154,12 @@ pub enum TxRuleError {
 
     #[error("coinbase output #{0} uses an ALT discriminator (creation or reference) which is forbidden in coinbase")]
     AltInCoinbase(usize),
+
+    #[error("ALT reference at output #{0} cites unknown handle 0x{1}")]
+    AltReferenceDanglingHandle(usize, String),
+
+    #[error("ALT reference at output #{0} index {1} is out of range (handle has {2} entries)")]
+    AltReferenceIndexOutOfRange(usize, u8, u16),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

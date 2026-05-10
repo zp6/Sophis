@@ -117,6 +117,9 @@ pub enum RuleError {
     #[error("transaction in context validation failed for tx {0}: {1}")]
     TxInContextFailed(TransactionId, TxRuleError),
 
+    #[error("block has {0} ALT-creation outputs across all transactions where the max allowed per block is {1}")]
+    TooManyAltCreationsInBlock(usize, usize),
+
     #[error("wrong coinbase subsidy: expected {0} but got {1}")]
     WrongSubsidy(u64, u64),
 

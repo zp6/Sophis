@@ -17,6 +17,7 @@ use sophis_txscript::{
 
 use sophis_consensus_core::{KType, mass::MassCalculator};
 
+use crate::model::stores::alt::DbAltStore;
 use crate::model::stores::da::DbDaStore;
 use crate::model::stores::virtual_state::LkgVirtualState;
 
@@ -37,12 +38,24 @@ pub struct SvmContext {
     /// clone, deterministic at consensus time. `None` preserves the
     /// pre-6.5.b conservative-zero behavior.
     pub lkg_virtual_state: Option<LkgVirtualState>,
+    /// L1 — Address Lookup Table store handle injected once consensus
+    /// storage is wired. `None` preserves pre-L1 test/lite-build behavior:
+    /// ALT references skip rules 15-16 enforcement (the structural rule 14
+    /// from L1.3.a still fires either way). Production validators MUST set
+    /// this; otherwise dangling references would be silently accepted.
+    pub alt_store: Option<Arc<DbAltStore>>,
 }
 
 impl SvmContext {
     pub fn new(store: Arc<dyn ContractStore>) -> Result<Self, sophis_svm_runtime::RuntimeError> {
         let engine = SvmEngine::new(RuntimeConfig::default())?;
-        Ok(Self { executor: Arc::new(ContractExecutor::new(engine)), store, da_store: None, lkg_virtual_state: None })
+        Ok(Self {
+            executor: Arc::new(ContractExecutor::new(engine)),
+            store,
+            da_store: None,
+            lkg_virtual_state: None,
+            alt_store: None,
+        })
     }
 
     /// Builder — attach a DA store handle. Production uses
@@ -58,6 +71,14 @@ impl SvmContext {
     /// (sub-fase 6.5.b).
     pub fn with_lkg_virtual_state(mut self, lkg: LkgVirtualState) -> Self {
         self.lkg_virtual_state = Some(lkg);
+        self
+    }
+
+    /// Builder — attach the L1 ALT store handle. Production uses
+    /// `consensus.storage.alt_store.clone()`; tests omit and skip ALT
+    /// reference resolution (rules 15-16 of `docs/L1_ALT_DESIGN.md` §5).
+    pub fn with_alt_store(mut self, alt_store: Arc<DbAltStore>) -> Self {
+        self.alt_store = Some(alt_store);
         self
     }
 }

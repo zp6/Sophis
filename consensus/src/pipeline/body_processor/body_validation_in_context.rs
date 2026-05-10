@@ -11,6 +11,7 @@ use crate::{
     },
 };
 use once_cell::unsync::Lazy;
+use sophis_consensus_core::alt::{AltScriptKind, MAX_ALT_CREATIONS_PER_BLOCK, classify_alt_script};
 use sophis_consensus_core::block::Block;
 use sophis_database::prelude::StoreResultExt;
 use sophis_hashes::Hash;
@@ -20,7 +21,35 @@ impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
+        Self::check_alt_creation_per_block_cap(block)?;
         self.check_block_transactions_in_context(block)
+    }
+
+    /// L1 — enforce rule 17 of `docs/L1_ALT_DESIGN.md` §5: a single block
+    /// may contain at most `MAX_ALT_CREATIONS_PER_BLOCK` ALT-creation
+    /// outputs across ALL its transactions. Per-tx cap (rule 18) is
+    /// enforced earlier in `validate_tx_in_isolation`.
+    ///
+    /// The block-wide cap is needed because a single tx already caps at 4
+    /// (rule 18) but a single block could legally include thousands of
+    /// transactions, which would otherwise allow an arbitrarily large
+    /// number of ALT-creation outputs per block. The block cap (16)
+    /// guarantees that the worst-case `payload_len` per block is bounded
+    /// by `16 × 256 entries × 4096 bytes ≈ 16 MB` (modulo the mass cap
+    /// that fires far below this).
+    fn check_alt_creation_per_block_cap(block: &Block) -> BlockProcessResult<()> {
+        let mut count = 0usize;
+        for tx in block.transactions.iter() {
+            for output in tx.outputs.iter() {
+                if classify_alt_script(output.script_public_key.script()) == Some(AltScriptKind::Creation) {
+                    count += 1;
+                    if count > MAX_ALT_CREATIONS_PER_BLOCK {
+                        return Err(RuleError::TooManyAltCreationsInBlock(count, MAX_ALT_CREATIONS_PER_BLOCK));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {

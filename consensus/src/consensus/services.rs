@@ -162,10 +162,15 @@ impl ConsensusServices {
                 // `Capability::VerifyDataAvailability` see real on-chain
                 // presence answers. Phase 6.5.b — also wire the
                 // LkgVirtualState handle so the backend can read the
-                // chain-tip blue score on demand. Tests / lite builds
-                // without storage skip both and fall back to StubDa.
+                // chain-tip blue score on demand. L1.3.b — wire the ALT
+                // store so the validator can enforce rules 15-16 (dangling
+                // reference, index range). Tests / lite builds without
+                // storage skip all three and fall back to StubDa / no-ALT.
                 Ok(svm_ctx) => tv.with_svm(
-                    svm_ctx.with_da_store(storage.da_store.clone()).with_lkg_virtual_state(storage.lkg_virtual_state.clone()),
+                    svm_ctx
+                        .with_da_store(storage.da_store.clone())
+                        .with_lkg_virtual_state(storage.lkg_virtual_state.clone())
+                        .with_alt_store(storage.alt_store.clone()),
                 ),
                 Err(e) => {
                     log::warn!("sVM initialisation failed — contracts disabled: {e}");

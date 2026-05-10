@@ -17,6 +17,7 @@ use crate::{
             DB,
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            alt::DbAltStore,
             block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter},
             da::{CarrierIndex, DbDaStore},
             daa::DbDaaStore,
@@ -137,6 +138,10 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) da_store: Arc<DbDaStore>,
+    /// L1 — ALT store. Wired alongside `da_store` so `commit_utxo_state`
+    /// can index ALT-creation outputs atomically with the rest of the
+    /// chain-block commit batch.
+    pub(super) alt_store: Arc<DbAltStore>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
     /// Anti long-range attack — the virtual processor is responsible for
@@ -223,6 +228,7 @@ impl VirtualStateProcessor {
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
             da_store: storage.da_store.clone(),
+            alt_store: storage.alt_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             pruning_meta_stores: storage.pruning_meta_stores.clone(),
             max_chain_work_seen_store: storage.max_chain_work_seen_store.clone(),
@@ -557,6 +563,13 @@ impl VirtualStateProcessor {
         if let Err(e) = self.index_carriers_in_block(&mut batch, current, &acceptance_data) {
             warn!("DA carrier indexing failed for block {current}: {e}");
         }
+        // L1 — index any ALT-creation outputs in the accepted txs of this
+        // chain block. Same atomicity envelope as the carrier indexing
+        // (single WriteBatch). Idempotent at the alt_store layer: a second
+        // accept of the same block (reorg replay) is a no-op.
+        if let Err(e) = self.index_alt_creations_in_block(&mut batch, current, &acceptance_data) {
+            warn!("ALT creation indexing failed for block {current}: {e}");
+        }
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
         // Note we call idempotent since this field can be populated during IBD with headers proof
         self.pruning_samples_store.insert_batch(&mut batch, current, pruning_sample_from_pov).idempotent().unwrap();
@@ -638,6 +651,76 @@ impl VirtualStateProcessor {
         }
 
         self.da_store.index_carrier_batch(batch, chain_block_hash, &carriers)
+    }
+
+    /// L1 — extracts every ALT-creation output (script[0] == 0xFE in a v=1
+    /// transaction) from the txs accepted by `chain_block_hash` and inserts
+    /// the corresponding `AltEntry` records into the ALT store. The
+    /// store-side write is appended to `batch` so the mutation is atomic
+    /// with the other consensus writes in `commit_utxo_state`.
+    ///
+    /// Reuses the same idempotency guarantee as the DA path: the alt_store
+    /// will skip handles it has already seen, so re-accepting the same
+    /// block on a reorg replay is a no-op.
+    fn index_alt_creations_in_block(
+        &self,
+        batch: &mut WriteBatch,
+        chain_block_hash: Hash,
+        acceptance_data: &AcceptanceData,
+    ) -> Result<(), sophis_database::prelude::StoreError> {
+        use crate::model::stores::alt::AltCreationIndex;
+        use sophis_consensus_core::alt::{
+            AltEntry, AltEntryRecord, AltHandleHash, AltScriptKind, classify_alt_script, iter_alt_entries, parse_alt_creation_header,
+        };
+
+        let blue_score = self.ghostdag_store.get_blue_score(chain_block_hash).unwrap_or(0);
+        // The DAA score on the chain-block header is what callers expect
+        // when they later resolve a handle's "creating_daa_score". Looked
+        // up alongside blue_score for symmetry.
+        let creating_daa_score = self.headers_store.get_daa_score(chain_block_hash).unwrap_or(blue_score);
+
+        let mut creations: Vec<AltCreationIndex> = Vec::new();
+        for mergeset_block in acceptance_data.iter() {
+            let txs = match self.block_transactions_store.get(mergeset_block.block_hash) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            for accepted in &mergeset_block.accepted_transactions {
+                let tx_idx = accepted.index_within_block as usize;
+                let Some(tx) = txs.get(tx_idx) else { continue };
+                // v=0 transactions cannot legally contain ALT discriminators
+                // (rules 1, 13). The isolation validator already rejected
+                // those before they reached here, so the version filter is
+                // a defensive shortcut, not a load-bearing check.
+                if tx.version < 1 {
+                    continue;
+                }
+                for output in &tx.outputs {
+                    let script = output.script_public_key.script();
+                    if classify_alt_script(script) != Some(AltScriptKind::Creation) {
+                        continue;
+                    }
+                    let header = match parse_alt_creation_header(script) {
+                        Ok(h) => h,
+                        Err(e) => {
+                            warn!(
+                                "ALT: malformed creation in accepted tx of block {} (this should be impossible): {e}",
+                                mergeset_block.block_hash
+                            );
+                            continue;
+                        }
+                    };
+                    let handle = AltHandleHash::new(header.handle);
+                    let entries: Vec<AltEntryRecord> = iter_alt_entries(script)
+                        .map(|v| AltEntryRecord { spk_version: v.spk_version, spk_script: v.spk_script.to_vec() })
+                        .collect();
+                    let entry = AltEntry { handle, entries, creating_block_hash: chain_block_hash, creating_daa_score };
+                    creations.push(AltCreationIndex { handle, entry });
+                }
+            }
+        }
+
+        self.alt_store.index_alt_creations(batch, chain_block_hash, &creations)
     }
 
     fn calculate_and_commit_virtual_state(
