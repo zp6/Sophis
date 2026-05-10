@@ -143,6 +143,61 @@ impl MemSizeEstimator for EventLog {
 }
 
 // ---------------------------------------------------------------------------
+// EventLogs — Vec<EventLog> wrapper for `EventsByBlock` / `EventsByTx`
+// ---------------------------------------------------------------------------
+
+/// Ordered list of events stored under a single key in `EventsByBlock`
+/// or `EventsByTx`. Newtype so the cached-store API has a stable shape.
+#[derive(Clone, Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct EventLogs {
+    pub logs: Vec<EventLog>,
+}
+
+impl MemSizeEstimator for EventLogs {
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>() + self.logs.iter().map(|e| e.estimate_mem_bytes()).sum::<usize>()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EventLogPointer — auxiliary index entry for `EventsByContract` / `EventsByTopic`
+// ---------------------------------------------------------------------------
+
+/// Pointer to an event in the canonical `EventsByBlock` (or `EventsByTx`)
+/// store. Aux indexes carry these instead of full `EventLog`s to keep the
+/// archival footprint small (~36 bytes per event) while still supporting
+/// efficient filter walks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct EventLogPointer {
+    pub block_hash: Hash,
+    pub log_index: u32,
+}
+
+impl MemSizeEstimator for EventLogPointer {}
+
+/// Ordered list of pointers under a single `(contract_id, bucket)` or
+/// `(topic, bucket)` key.
+#[derive(Clone, Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct EventLogPointers {
+    pub pointers: Vec<EventLogPointer>,
+}
+
+impl MemSizeEstimator for EventLogPointers {
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>() + self.pointers.len() * size_of::<EventLogPointer>()
+    }
+}
+
+/// Computes the bucket index for a given DAA score, used as the second
+/// half of the composite key in `EventsByContract` and `EventsByTopic`.
+/// Mirrors the Phase 6 `domain_bucket_key_bytes` partitioning function;
+/// callers concatenate `(32-byte prefix) || (bucket.to_le_bytes())` to
+/// form the full RocksDB key.
+pub const fn daa_bucket(daa_score: u64) -> u64 {
+    daa_score / super::EVENTS_BY_CONTRACT_BUCKET_SIZE
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

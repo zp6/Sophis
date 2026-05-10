@@ -7,6 +7,7 @@ use crate::{
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
         da::DbDaStore,
+        events::DbEventStore,
         daa::DbDaaStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
@@ -75,6 +76,9 @@ pub struct ConsensusStorage {
     /// L1 — Address Lookup Tables. See `consensus/src/model/stores/alt.rs`
     /// and `docs/L1_ALT_DESIGN.md` §4.
     pub alt_store: Arc<DbAltStore>,
+    /// J4 — sVM event logs. See `consensus/src/model/stores/events.rs`
+    /// and `docs/J4_EVENTS_DESIGN.md` §4.
+    pub event_store: Arc<DbEventStore>,
 
     // Block window caches
     pub block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -231,6 +235,9 @@ impl ConsensusStorage {
         // resolves a reference) but written rarely; reuse the block_data cache
         // budget to keep recent entries hot.
         let alt_store = Arc::new(DbAltStore::new(db.clone(), block_data_builder.build()));
+        // J4 — Event store. Events are read on getLogs RPC queries; reuse the
+        // block_data cache budget for the per-block / per-tx canonical stores.
+        let event_store = Arc::new(DbEventStore::new(db.clone(), block_data_builder.build()));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
@@ -276,6 +283,7 @@ impl ConsensusStorage {
             utxo_multisets_store,
             da_store,
             alt_store,
+            event_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,

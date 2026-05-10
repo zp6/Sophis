@@ -4,6 +4,7 @@ pub mod block_transactions;
 pub mod block_window_cache;
 pub mod children;
 pub mod da;
+pub mod events;
 pub mod daa;
 pub mod depth;
 pub mod ghostdag;

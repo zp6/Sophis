@@ -36,7 +36,7 @@ pub mod codec;
 pub mod store_types;
 
 pub use codec::{encode_emission_payload, parse_emission_payload, topic_signature_hash};
-pub use store_types::{EventLog, EventTopic};
+pub use store_types::{EventLog, EventLogPointer, EventLogPointers, EventLogs, EventTopic, daa_bucket};
 
 // --- caps and limits ---------------------------------------------------
 
