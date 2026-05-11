@@ -34,7 +34,6 @@ fn bench_hashers(c: &mut Criterion) {
     // MerkleBranchHash returns MerkleHash (not Hash) — excluded from generic bench
     test_bytes_hasher::<MuHashElementHash>(c);
     test_bytes_hasher::<MuHashFinalizeHash>(c);
-    test_bytes_hasher::<TransactionSigningHashECDSA>(c);
 }
 
 fn bench_pow_hash(c: &mut Criterion) {

@@ -65,7 +65,10 @@ pub fn generate_random_utxo(rng: &mut SmallRng) -> UtxoEntry {
     )
 }
 
-///Note: this generates schnorr p2pk script public keys.
+/// Generates a 32-byte P2PK script (push-32 + OP_CHECKSIG opcode). The
+/// 32-byte payload is randomly filled and is **not** a valid Dilithium
+/// public-key hash; callers in this module only need a well-formed
+/// script byte sequence, not one that would actually verify.
 pub fn generate_random_p2pk_script_public_key(rng: &mut SmallRng) -> ScriptPublicKey {
     let mut script: ScriptVec = (0..32).map(|_| rng.random()).collect();
     script.insert(0, 0x20);

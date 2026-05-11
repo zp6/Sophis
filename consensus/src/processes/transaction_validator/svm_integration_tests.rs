@@ -199,7 +199,7 @@ fn test_svm_disabled_falls_through_to_error() {
 #[test]
 fn test_mixed_tx_normal_and_contract_inputs() {
     // Tx with one normal P2PK input AND one contract input — only contract path tested here
-    // (P2PK would fail without a valid Schnorr sig, so we only test contract part)
+    // (P2PK would fail without a valid Dilithium sig, so we only test contract part)
     let (svm_ctx, contract_id) = make_svm_ctx(ALWAYS_VALID_WASM);
     let script_bytes = contract_utxo_data_bytes(contract_id);
     let contract_utxo = contract_utxo_entry(script_bytes);

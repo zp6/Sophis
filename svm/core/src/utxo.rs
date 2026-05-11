@@ -31,7 +31,7 @@ impl Datum {
 /// Contract outputs additionally carry this structure.
 ///
 /// Dispatch at validation (B3 model):
-///   Normal UTXO  → txscript (Schnorr/Dilithium)
+///   Normal UTXO  → txscript (Dilithium)
 ///   Contract UTXO → svm/runtime (Wasmtime)
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub struct ContractUtxoData {

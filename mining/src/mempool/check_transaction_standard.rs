@@ -30,7 +30,7 @@ const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
 /// OP_PUSHDATA2 needed to specify the 513 bytes for the script push.
 /// That brings the total to 1+(15*74)+3+513 = 1627. This value also
 /// adds a few extra bytes to provide a little buffer.
-/// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650 (Schnorr baseline)
+/// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650 (historical Bitcoin/Kaspa baseline)
 /// Dilithium-2 P2SH sig script: sig(2424) + redeem_script(1319) = 3743 bytes
 const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 4096;
 

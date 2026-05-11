@@ -20,9 +20,7 @@ faster-hex.workspace = true
 js-sys.workspace = true
 sophis-utils.workspace = true
 keccak = { workspace = true, optional = true }
-once_cell.workspace = true
 serde.workspace = true
-sha2.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 

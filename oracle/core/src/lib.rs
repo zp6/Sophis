@@ -27,7 +27,7 @@ pub use price::{FeedId, PriceUpdate, PublisherKey, PythnetSubmission, SignedPric
 /// borsh-serialized `RelayerBundle` wire format from `sign::SignedBundle::encode_wire`).
 ///
 /// Picked so it does not collide with existing Sophis SPK versions:
-///   0..2 → standard wallet scripts (ECDSA / Schnorr / P2SH; max=2)
+///   0..2 → standard wallet scripts (Dilithium P2PK / P2SH; max=2)
 ///   3    → BRIDGE_VAULT (deposit; legacy, kept for in-tree rollup)
 ///   4    → BRIDGE_CLAIM (withdrawal; legacy, kept for in-tree rollup)
 ///   5    → ROLLUP_STATE
