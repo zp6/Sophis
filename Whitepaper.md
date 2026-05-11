@@ -2,9 +2,23 @@
 
 ## A Fair-Launch, Post-Quantum Layer-1 BlockDAG
 
-**Version 2.0 — 2026-05-05**
+**Version 2.1 — 2026-05-11**
 **Author:** Hiroshi Tatakawa
-**Status:** Pre-mainnet (whitepaper supersedes Whitepaper.pdf v1.0)
+**Status:** Pre-mainnet (whitepaper supersedes Whitepaper.pdf v1.0 and Whitepaper.md v2.0)
+
+> **Changes since v2.0 (2026-05-05).** Phase 5 ZK-Oracle (Pyth +
+> Plonky3 STARK + ed25519 trust chain + Dilithium relayer) was
+> built pre-mainnet but then **deprecated on 2026-05-11** in favor
+> of **Phase 9** — a PQC-native oracle where each publisher signs
+> attestations directly with Dilithium ML-DSA-44, eliminating the
+> ed25519 trust chain entirely. Phase 6 Data Availability also
+> changed direction: instead of integrating Avail (as proposed in
+> v2.0 §14.5), Sophis ships a **self-hosted DA layer** using V5
+> carrier UTXOs with SHA3-384 Merkle commitments. Sections §8.2,
+> §14.1, §14.4 and §14.5 reflect these decisions. The protocol's
+> three foundational properties — PQC from genesis, pure fair
+> launch, transparent L1 with no bridge and no native privacy —
+> are unchanged.
 
 ---
 
@@ -346,7 +360,7 @@ Four crates compose the sVM:
 
 1. **Bytecode validation.** The validator rejects floats, SIMD instructions, threads, exception handling, and any feature that would make execution non-deterministic across nodes. Memory must declare a `maximum`; the cap is 256 pages = 16 MiB. An undeclared or oversized memory section fails deployment.
 2. **Fuel metering.** Every WASM instruction consumes fuel from a budget set by the transaction's mass; a contract that exceeds its budget is aborted and its transaction invalidated. Fuel is not refundable.
-3. **Capability gating.** A contract declares the host capabilities it requires in its manifest. The runtime registers only those host functions for that contract; unrequested capabilities are not imported, and an attempt to call an unimported function is a link-time error. The current `Capability` enum is exactly: `ReadUtxo`, `ProduceOutput`, `VerifyDilithium`, `ReadBlockHeight`, `HashSha3`, `VerifyRisc0Proof`. No `VerifySchnorr`. No `OP_PRIVACY` capability. These six are the entire surface.
+3. **Capability gating.** A contract declares the host capabilities it requires in its manifest. The runtime registers only those host functions for that contract; unrequested capabilities are not imported, and an attempt to call an unimported function is a link-time error. The current `Capability` enum is exactly: `ReadUtxo`, `ProduceOutput`, `VerifyDilithium`, `ReadBlockHeight`, `HashSha3`, `VerifyRisc0Proof`, `VerifyPlonky3Proof`, `VerifyDataAvailability`, `VrfRandomness`. No `VerifySchnorr`. No `OP_PRIVACY` capability. The two STARK-verification capabilities (`VerifyRisc0Proof` for Phase 3 rollup batches; `VerifyPlonky3Proof` as a general-purpose primitive used by Phase 5 oracle and reserved for future Phase 9.x aggregation) are independent and may both be enabled by a single contract. `VerifyDataAvailability` is consumed by Phase 6 DA carriers (§14.5). `VrfRandomness` (delivered as roadmap item J3) exposes deterministic randomness derived from RandomX block hashes, with no external beacon. These nine are the entire surface.
 4. **Linear-typed resources.** As described in §7.1, `Resource<T>` enforces that every token amount is explicitly consumed.
 5. **Deterministic crypto host functions.** Every crypto function exposed to a contract is deterministic and side-effect-free: same inputs produce the same output across all nodes.
 6. **Upgrade policy enforcement.** A contract's `UpgradePolicy` is validated at deployment by `validate_contract_deploy()`. For `MultisigTimelock` the rules are: `threshold > 0`, `threshold ≤ keys.len()`, `keys.len() ≤ 16`. Once deployed, the policy is immutable.
@@ -538,15 +552,24 @@ Build dependencies on Windows: Rust 1.94+, MSVC 2022 C++ toolchain, LLVM 22+ (`L
 - **Phase 1.** GHOSTDAG consensus, RandomX PoW, Dilithium end-to-end, orphan-rate monitor.
 - **Phase 2.** sVM (WASM), native L1 tokens, Rust SDK, `sophis-lint` (Dylint), Kani formal proofs, CLI Dilithium wallet, faucet, block explorer, emission curve, complete removal of secp256k1/Schnorr from the codebase, sVM security review, whitepaper v1.0.
 - **Phase 3.** ZK-Rollup L2 (STARKs + Risc0 + native sequencer): all seven crates complete with passing test suites, sVM `VerifyRisc0Proof` capability live.
+- **Phase 5 (deprecated 2026-05-11).** ZK-Oracle aggregator with Pyth + Plonky3 STARK + ed25519 verification AIR + Dilithium relayer was built and tested pre-mainnet, then deprecated in favor of Phase 9 once the operational complexity and ed25519 trust-chain residue were judged structurally inferior to a publisher-direct PQC scheme. Phase 5 crates (`oracle/{core,feeds,host,relayer}`) still build and run as a fallback while indexers transition; they are scheduled for removal after Phase 9 publisher quorum bootstrap per SIP-11 D11.
+- **Phase 6.** Self-hosted Data Availability layer using V5 carrier UTXOs, SHA3-384 Merkle commitments, and `Capability::VerifyDataAvailability`. Replaces the Avail integration that v2.0 of this whitepaper proposed in §14.5. Built end-to-end pre-mainnet (carrier consensus rules, DA codec, RocksDB store, sequencer integration, RPC, sVM capability, runbook, stress plan, audit, RFC, fuzz tests). See §14.5 for the rationale behind self-hosting versus integrating an external DA network.
+- **Phase 9.** PQC-native oracle. Each publisher signs price attestations directly with Dilithium ML-DSA-44, eliminating the Phase 5 ed25519-STARK trust chain. Open-permissioned publisher set, median aggregation, dual-path Phase 5/Phase 9 dispatch helper (`evaluate_flip`) to support smooth migration. Foundation crate `oracle/pqc-core`, on-chain contract `oracle/pqc-contract`, publisher CLI `oracle/pqc-publisher`, end-to-end integration tests `oracle/pqc-tests`; SIP-11 specifies the wire format. Pre-mainnet operational follow-up: recruit ≥ 3 independent publishers and stand up at least one reference indexer before mainnet (see §14.2).
+- **Roadmap items L1, I1, J2–J8, K2, L3, H1.** Address Lookup Tables, public-dashboard backend + Hyperliquid-style frontend, typed signing (SIP-2), VRF via RandomX, sVM event logs (SIP-4), commitment levels, energy calculator, BIP-157/158-equivalent compact filters, light-client SPV library (SIP-7), pruning policy (SIP-8), Poseidon spec (SIP-9), multicall template (SIP-10) — all shipped pre-mainnet between 2026-05-10 and 2026-05-11. Each item is tracked by its corresponding SIP under `SIPS/`.
+- **SIPs formalized.** SIP-0 process spec, SIP-1 PSBS (partially-signed transactions, Dilithium-aware), SIP-2 typed signing, SIP-3 ALT, SIP-4 events, SIP-5 wallet descriptors (BIP-380-style, graduated 2026-05-11), SIP-7 light client, SIP-8 pruning policy, SIP-9 Poseidon, SIP-10 multicall, SIP-11 PQC-native oracle. SIP-5 in particular formalizes a Dilithium-aware descriptor language used by hardware wallets, multisig coordination, and watch-only backup workflows.
 
 ### 14.2 In progress (pre-mainnet)
 
-- **Founder Self-Restriction monitoring script** — public GitHub repo, watches `(balance / total_emitted_supply)`, auto-pauses miner at 4.9 %.
-- **Three canonical documents** for mainnet announcement: Sophis Monetary Policy, Founder Self-Restriction Statement, Operational Boundaries Statement.
+- **Phase 9 publisher recruitment.** At least three independent Sophis-native publishers (BTC/USD, ETH/USD, SPHS/USD) must be signed up before mainnet launch so that the dual-path `evaluate_flip` helper returns `Flip` on production indexers from genesis day, rather than falling back indefinitely to Phase 5. This is the single most operationally load-bearing pre-mainnet item.
+- **Reference indexer for Phase 9.** Open-permissioned design allows arbitrary peers, but at least one reference indexer instance must be operational so that consumer integrations have a known good endpoint to ingest events from.
+- **Founder Self-Restriction monitoring script.** Public GitHub repo, watches `(balance / total_emitted_supply)`, auto-pauses miner at 4.9 %. Script complete; deployment in continuous operation pending mainnet.
+- **Three canonical documents** for mainnet announcement: Sophis Monetary Policy, Founder Self-Restriction Statement, Operational Boundaries Statement (already merged at the repository root as `MONETARY_POLICY.md`, `FOUNDER_SELF_RESTRICTION.md`, `OPERATIONAL_BOUNDARIES.md`; published with SHA-256-anchored timestamps at announcement).
 - **Bootstrap nodes** in two or more geographies; recruited independent DNS seeder operators.
-- **LICENSE** (MIT or Apache 2.0) and **CONTRIBUTING.md** with DCO requirement at the repo root.
+- **LICENSE** (AGPL-3.0) and **CONTRIBUTING.md** with DCO requirement at the repo root — both shipped.
 - **Donation wallet published** — a single personal donation address, generated on a freshly-keyed wallet distinct from both the mining wallet (§5.3) and the maintainer's day-to-day wallet, published in `README.md` and on the project website together with the canonical disclaimer text from §5.5. No multisig, no project treasury, no governance.
-- **Testnet hardening** — final stress test under realistic geographic and adversarial conditions.
+- **Project site** at `sophis.org` — landing page + faucet + block explorer + the documentation index already inlined in `README.md`.
+- **Whitepaper v2.x sync passes** as features land. This v2.1 captures the Phase 5 → Phase 9 + Phase 6 → Self-DA transitions of 2026-05-11.
+- **Testnet hardening** — final stress test under realistic geographic and adversarial conditions, including the 72-hour Phase 6 DA stress run.
 
 ### 14.3 Mainnet launch — defensive measures around the 24h founder wait
 
@@ -560,40 +583,45 @@ The 24-hour wait between genesis and the founder's first hash (§5.3) is a bindi
 
 These five actions are non-protocol — they neither modify consensus nor require code changes — but they form the defensive layer that makes the 24h wait a load-bearing piece of evidence rather than ceremonial.
 
-### 14.4 Post-mainnet — Phase 5: ZK-Oracle Aggregator
+### 14.4 Oracle layer — Phase 9 (current) and Phase 5 (deprecated)
 
-**Status:** approved 2026-05-05, scheduled to begin after mainnet stabilization (estimated T+12 to T+24 months post-mainnet).
+The v2.0 whitepaper described Phase 5 ZK-Oracle as a post-mainnet item to be built using external feeds (Chainlink OCR2, Pyth/Wormhole, Band Protocol) and Risc0 STARK verification. That description is **superseded**. The actual trajectory is:
 
-A ZK-aggregated oracle layer that pulls price feeds from external oracle networks (Chainlink OCR2, Pyth/Wormhole, Band Protocol), verifies their signatures inside a Risc0 STARK circuit, computes a trust-minimized median with freshness bounds, and exposes the result on-chain via the sVM `VerifyRisc0Proof` capability (the same primitive already used by the Phase 3 ZK-Rollup).
+**Phase 5 (deprecated 2026-05-11).** A first implementation was built pre-mainnet, narrowed to a single source (Pythnet pull adapter rather than a generic feed-network aggregator), using Plonky3 STARK over the Pyth publisher's ed25519 signature plus an aggregation layer signed by a Sophis-controlled relayer with Dilithium. The on-chain verifier consumes the proof via `Capability::VerifyPlonky3Proof`. The implementation works, but two structural problems became visible in operation:
 
-Scope:
+1. The Pyth ed25519 signature is the load-bearing trust root for the whole chain. The Plonky3 STARK proves *that an ed25519 signature is valid*, but the signature itself is pre-quantum. A chain that goes to substantial expense to be PQC at every other layer should not anchor oracle truth on ed25519.
+2. The relayer is a centralizable single point of operational responsibility — exactly the kind of intermediary the Operational Boundaries posture (§11) rejects elsewhere.
 
-- **Reference implementation** of the aggregator circuit, the on-chain update contract, and the Rust + TypeScript SDK helpers (`oracle.read_price("BTC/USD")`).
-- **Open-source code, neutral primitives.** The core team does **not** operate an official aggregator instance — independent operators run the relayer / circuit prover service at their own discretion. This preserves the Operational Boundaries (§11): the team ships software, not a custodial service.
-- **No bridge component.** Phase 5 reads external feeds; it does not move assets between chains. Cross-chain asset bridging remains permanently out-of-scope (§10.1).
+Phase 5 was therefore deprecated on 2026-05-11. The crates (`oracle/core`, `oracle/feeds`, `oracle/host`, `oracle/relayer`) still build and run as a fallback during the Phase 9 publisher quorum bootstrap window, and will be removed in the commit that follows production indexers flipping per SIP-11 D11.
 
-Estimated effort: 12–18 months, 2–3 dedicated engineers, US$ 0.5M–1.2M all-in. Funding source: external grants (aspirational), commissioned work, or independent contributors. The core team commits only to maintaining the SDK and reference circuit; production deployments are third-party.
-
-### 14.5 Post-mainnet — Phase 6: Data Availability via Avail integration
-
-**Status:** technical evaluation reaffirmed 2026-05-05. **Sophis will not build a data-availability layer from scratch.** Reinventing Reed-Solomon erasure coding, BFT consensus for a DA committee, and light-client tooling would consume US$ 1.5M–4M and 18–24 months for infrastructure already provided by mature external networks. Instead, Sophis will integrate as a **client** of the **Avail** DA network for L2 batch data availability.
-
-Why Avail (re-evaluated against Celestia, 2026-05-05):
-
-- **KZG-based Data Availability Sampling** produces lighter light clients (<1 MB Wasm) than Celestia's Reed-Solomon + Merkle approach — important for browser-side and embedded verification.
-- **Higher throughput targets** (~100 MB/s design, ~10 MB/s realized) and lower per-blob costs than Celestia's current parameters.
-- **Substrate / Polkadot SDK** stack opens the option of lightweight data interop (XCM-style messaging built by third parties, never by the core team — see §10.1).
-- Celestia is more mature in absolute production terms (50+ rollups vs. ~20 on Avail) but the technical advantages above outweigh the maturity gap for Sophis's specific case: a PQC-aware rollup that values light-client efficiency.
+**Phase 9 (current production oracle path).** A PQC-native redesign in which each publisher signs price attestations directly with Dilithium ML-DSA-44 — no STARK trust chain, no relayer. The publisher set is open-permissioned (anyone may operate a publisher); indexers ingest attestations, compute medians within a freshness window, and publish aggregated results via Phase 6 DA carriers or J4 events.
 
 Scope:
 
-- **Avail blob client** integrated into the Sophis L2 batch path: each L2 batch's calldata is published as an Avail blob; the L1 verifier contract checks the Avail commitment along with the Risc0 STARK proof.
-- **No Avail node operated by the core team.** Avail blob-posting fees are paid in AVAIL, sourced either by independent rollup operators or — if the L2 sequencer mechanism evolves — by an automated SPHS→AVAIL swap on third-party DEXs.
-- **No fork of Avail, no modification to Avail consensus.** Sophis is a consumer.
+- **`oracle/pqc-core`** — shared types, attestation wire format, dual-path `evaluate_flip` helper for migration.
+- **`oracle/pqc-contract`** — on-chain Dilithium attestation verifier (uses `Capability::VerifyDilithium`).
+- **`oracle/pqc-publisher`** — publisher CLI binary; signs attestations and hands the hex output to a wallet-side tx-construction tool. The CLI is a signer, not a submitter — preserving the Operational Boundaries posture.
+- **`oracle/pqc-tests`** — end-to-end integration tests covering publisher → contract → indexer → consumer dispatch.
+- **SIP-11** specifies the wire format, the 12 ratified design decisions (D1–D12), and the migration playbook.
 
-Quantum-readiness caveat: Avail's signatures (BLS12-381) and Celestia's (Ed25519) are both pre-quantum. The dependency is bounded to **L2 batch data**, which is short-lived (committed and finalized in hours to days), not to long-term L1 keys. When Avail or Celestia ship PQC-native committees (expected 2027–2030), Sophis migrates the integration; until then, the residual risk is acceptable for L2-only scope.
+Phase 9 is **already implemented end-to-end pre-mainnet.** The remaining work is operational: recruit ≥ 3 independent publishers, stand up at least one reference indexer, and run the full pipeline against devnet for 7 consecutive days before testnet (see §14.2). The dual-path `evaluate_flip` helper lets indexers consume Phase 5 fallback data until Phase 9 reaches consensus, after which Phase 5 is removed.
 
-Estimated effort for Sophis-side integration: 4–6 months, 1–2 engineers, US$ 100k–300k all-in.
+### 14.5 Data Availability — Phase 6 (self-hosted, current)
+
+The v2.0 whitepaper proposed integrating Avail as Sophis's data-availability layer. That plan was **revisited and rejected** in mid-2026 on two grounds: (1) Avail's signature stack (BLS12-381) is pre-quantum, and (2) any external DA dependency reintroduces the cross-chain coupling that §10.1 rules permanently out-of-scope. The Sophis DA design therefore reuses Sophis's own consensus and PQC primitives.
+
+**Phase 6 Self-DA, as built:**
+
+- **V5 carrier UTXOs** — DA payloads are encoded as `script_public_key.script` data on standard transaction outputs with `ScriptPublicKey.version() == V5_CARRIER_VERSION`. The consensus enforces a maximum payload size, a SHA3-384 Merkle commitment over the carrier set, and a per-block aggregate limit.
+- **SHA3-384 Merkle commitments** — the same hash already used elsewhere in Sophis (Phase 9 attestation `asset_id`, addressing fingerprints, descriptor identity). No new primitive is added.
+- **DA codec** — payload identifier, bundle identifier, and reassembly logic live in `consensus/core/src/da/codec.rs`. NIST SHA3-384 test vectors validated.
+- **`Capability::VerifyDataAvailability`** — on-chain contracts may verify that a given payload was published in a known block.
+- **Publisher integration** — Phase 9 publishers and the Phase 5 relayer can both opt into publishing through DA carriers via a `da_publish` flag.
+- **No external committee, no external token.** Carriers are paid for in SPHS like any other transaction; the L1 block producers store and serve the carrier payload as part of the normal block body. Pruning rules treat carrier payloads as ordinary block content.
+
+Pre-mainnet hardening: 72-hour stress run against 9 acceptance gates (see `oracle/docs/PHASE6_STRESS_PLAN.md`); adversarial test runner mapping 13 threats (see `oracle/docs/PHASE6_AUDIT.md`); RFC for community review (see `oracle/docs/PHASE6_RFC.md`); bug bounty program (see `oracle/docs/PHASE6_BUG_BOUNTY.md`); 6 fuzz tests on the codec.
+
+The trade-off: Sophis's DA throughput is bounded by L1 block bandwidth, which is lower than what a dedicated DA network can offer. The decision accepts that ceiling in exchange for keeping the trust assumptions of L2 data availability identical to the trust assumptions of L1 itself — a single PQC primitive set, no external dependency, no pre-quantum signature on the critical path. Throughput can be raised later via consensus parameter tuning if real workloads demand it; the architectural choice is fixed.
 
 ### 14.6 Permanently out-of-scope
 
