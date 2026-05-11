@@ -21,6 +21,9 @@ licence (AGPL-3.0; see [`LICENSE`](../LICENSE)).
 | SIP | Title | Type | Status | Created |
 |---|---|---|---|---|
 | [0](./SIP-0-process.md) | SIP Process and Template | Process | Active | 2026-05-08 |
+| [1](./SIP-1-PSBS.md) | Partially-Signed Sophis Transactions (PSBS) | Standards | Draft | 2026-05-09 |
+| [3](./SIP-3-ALT.md) | Address Lookup Tables (ALT) | Standards | Draft | 2026-05-10 |
+| [4](./SIP-4-EVENTS.md) | sVM Event Logs | Standards | Draft | 2026-05-10 |
 
 (Index will grow as SIPs are submitted and accepted. Maintainers
 update this table when a SIP changes status.)
