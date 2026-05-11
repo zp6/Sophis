@@ -73,6 +73,8 @@ message SophisdRequest {
     GetDaCarriersByBlockRequestMessage getDaCarriersByBlockRequest = 1120;
     GetDaCarriersByDomainRequestMessage getDaCarriersByDomainRequest = 1122;
     GetDaPayloadStatusRequestMessage getDaPayloadStatusRequest = 1124;
+    // J4 — sVM Event Logs (sub-fase J4.5.b)
+    GetLogsRequestMessage getLogsRequest = 1126;
   }
 }
 
@@ -146,6 +148,8 @@ message SophisdResponse {
     GetDaCarriersByBlockResponseMessage getDaCarriersByBlockResponse = 1121;
     GetDaCarriersByDomainResponseMessage getDaCarriersByDomainResponse = 1123;
     GetDaPayloadStatusResponseMessage getDaPayloadStatusResponse = 1125;
+    // J4 — sVM Event Logs (sub-fase J4.5.b)
+    GetLogsResponseMessage getLogsResponse = 1127;
   }
 }
 

@@ -33,7 +33,7 @@ use sophis_rpc_core::{
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
-    model::{da::*, message::*},
+    model::{da::*, events::*, message::*},
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
 };
 use sophis_utils::{channel::Channel, triggers::DuplexTrigger};
@@ -286,16 +286,8 @@ impl RpcApi for GrpcClient {
     route!(get_da_carriers_by_domain_call, GetDaCarriersByDomain);
     route!(get_da_payload_status_call, GetDaPayloadStatus);
 
-    // J4 — sVM Event Logs gRPC binding pending sub-fase J4.5.b
-    // (proto messages + ops + dispatch + route!() invocation). Until then
-    // the gRPC client returns NotImplemented so the trait stays compilable.
-    async fn get_logs_call(
-        &self,
-        _connection: Option<&sophis_rpc_core::api::connection::DynRpcConnection>,
-        _request: sophis_rpc_core::model::events::GetLogsRequest,
-    ) -> sophis_rpc_core::RpcResult<sophis_rpc_core::model::events::GetLogsResponse> {
-        Err(sophis_rpc_core::RpcError::NotImplemented)
-    }
+    // J4 — sVM Event Logs gRPC binding (sub-fase J4.5.b)
+    route!(get_logs_call, GetLogs);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

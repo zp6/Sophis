@@ -828,6 +828,28 @@ async fn sanity_test() {
                     assert!(response.status.is_none());
                 })
             }
+            // J4 — sVM Event Logs (sub-fase J4.5.b). Round-trips a minimal
+            // request through the gRPC plumbing and asserts the empty-result
+            // shape, mirroring the GetMempoolEntries pattern.
+            SophisdPayloadOps::GetLogs => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_logs_call(
+                            None,
+                            sophis_rpc_core::model::events::GetLogsRequest::new(
+                                None,
+                                vec![Some(vec![0xAAu8; 32])],
+                                None,
+                                None,
+                                Some(10),
+                            ),
+                        )
+                        .await
+                        .unwrap();
+                    assert!(response.logs.is_empty());
+                })
+            }
         };
         tasks.push(task);
     }

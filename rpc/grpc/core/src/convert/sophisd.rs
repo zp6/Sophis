@@ -73,6 +73,9 @@ pub mod sophisd_request_convert {
     impl_into_sophisd_request!(GetDaCarriersByDomain);
     impl_into_sophisd_request!(GetDaPayloadStatus);
 
+    // J4 — sVM Event Logs (sub-fase J4.5.b)
+    impl_into_sophisd_request!(GetLogs);
+
     impl_into_sophisd_request!(NotifyBlockAdded);
     impl_into_sophisd_request!(NotifyNewBlockTemplate);
     impl_into_sophisd_request!(NotifyUtxosChanged);
@@ -218,6 +221,9 @@ pub mod sophisd_response_convert {
     impl_into_sophisd_response!(GetDaCarriersByBlock);
     impl_into_sophisd_response!(GetDaCarriersByDomain);
     impl_into_sophisd_response!(GetDaPayloadStatus);
+
+    // J4 — sVM Event Logs (sub-fase J4.5.b)
+    impl_into_sophisd_response!(GetLogs);
 
     impl_into_sophisd_notify_response!(NotifyBlockAdded);
     impl_into_sophisd_notify_response!(NotifyNewBlockTemplate);

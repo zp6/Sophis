@@ -1192,3 +1192,48 @@ message GetDaPayloadStatusResponseMessage {
 
   RPCError error = 1000;
 }
+
+// ----------------------------------------------------------------
+// J4 — sVM Event Logs RPC (sub-fase J4.5.b)
+// ----------------------------------------------------------------
+
+// One indexed sVM event as exposed via RPC. Mirrors `RpcEventLog`
+// in `rpc/core/src/model/events.rs`. 32-byte contract_id and topics
+// encoded as raw bytes.
+message RpcEventLogEntry {
+  bytes contract_id = 1;
+  // 0..=4 entries, each exactly 32 bytes (MAX_TOPICS_PER_EVENT).
+  repeated bytes topics = 2;
+  bytes data = 3;
+  string block_hash = 4;
+  string tx_id = 5;
+  uint32 tx_index = 6;
+  uint32 log_index = 7;
+  uint64 daa_score = 8;
+}
+
+// Per-slot Option<bytes> for positional topic filter. proto3 has no
+// native Option, so we encode each slot as `present` + `topic`.
+message RpcEventLogTopicSlot {
+  bool present = 1;
+  bytes topic = 2;
+}
+
+// 6. GetLogs (J4) --------------------------------------------------
+
+message GetLogsRequestMessage {
+  // Empty `contract_id` (zero-length) means wildcard.
+  bytes contract_id = 1;
+  repeated RpcEventLogTopicSlot topics = 2;
+  // Empty string means open-ended on that side.
+  string from_block = 3;
+  string to_block = 4;
+  // 0 means "use server cap".
+  uint32 limit = 5;
+}
+
+message GetLogsResponseMessage {
+  repeated RpcEventLogEntry logs = 1;
+
+  RPCError error = 1000;
+}

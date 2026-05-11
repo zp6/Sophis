@@ -97,6 +97,9 @@ pub enum SophisdPayloadOps {
     GetDaCarriersByDomain,
     GetDaPayloadStatus,
 
+    // J4 — sVM Event Logs (sub-fase J4.5.b)
+    GetLogs,
+
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
     NotifyNewBlockTemplate,

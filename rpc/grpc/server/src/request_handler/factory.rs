@@ -89,6 +89,8 @@ impl Factory {
                 GetDaCarriersByBlock,
                 GetDaCarriersByDomain,
                 GetDaPayloadStatus,
+                // J4 — sVM Event Logs (sub-fase J4.5.b)
+                GetLogs,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,

@@ -602,6 +602,42 @@ from!(item: RpcResult<&sophis_rpc_core::GetDaPayloadStatusResponse>, protowire::
     Self { status: item.status.iter().map(|x| x.into()).collect(), error: None }
 });
 
+// J4 — sVM Event Logs (sub-fase J4.5.b)
+from!(item: &sophis_rpc_core::RpcEventLog, protowire::RpcEventLogEntry, {
+    Self {
+        contract_id: item.contract_id.clone(),
+        topics: item.topics.clone(),
+        data: item.data.clone(),
+        block_hash: item.block_hash.to_string(),
+        tx_id: item.tx_id.to_string(),
+        tx_index: item.tx_index,
+        log_index: item.log_index,
+        daa_score: item.daa_score,
+    }
+});
+
+from!(item: &sophis_rpc_core::GetLogsRequest, protowire::GetLogsRequestMessage, {
+    // Empty Vec<u8>/string encodes the `None` filter axes.
+    Self {
+        contract_id: item.contract_id.clone().unwrap_or_default(),
+        topics: item
+            .topics
+            .iter()
+            .map(|slot| protowire::RpcEventLogTopicSlot {
+                present: slot.is_some(),
+                topic: slot.clone().unwrap_or_default(),
+            })
+            .collect(),
+        from_block: item.from_block.as_ref().map(|h| h.to_string()).unwrap_or_default(),
+        to_block: item.to_block.as_ref().map(|h| h.to_string()).unwrap_or_default(),
+        limit: item.limit.unwrap_or(0),
+    }
+});
+
+from!(item: RpcResult<&sophis_rpc_core::GetLogsResponse>, protowire::GetLogsResponseMessage, {
+    Self { logs: item.logs.iter().map(|l| l.into()).collect(), error: None }
+});
+
 from!(item: &sophis_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -936,6 +972,40 @@ try_from!(item: &protowire::GetDaPayloadStatusRequestMessage, sophis_rpc_core::G
 });
 try_from!(item: &protowire::GetDaPayloadStatusResponseMessage, RpcResult<sophis_rpc_core::GetDaPayloadStatusResponse>, {
     Self { status: item.status.first().map(|s| s.try_into()).transpose()? }
+});
+
+// J4 — sVM Event Logs (sub-fase J4.5.b)
+try_from!(item: &protowire::RpcEventLogEntry, sophis_rpc_core::RpcEventLog, {
+    Self {
+        contract_id: item.contract_id.clone(),
+        topics: item.topics.clone(),
+        data: item.data.clone(),
+        block_hash: RpcHash::from_str(&item.block_hash)?,
+        tx_id: RpcHash::from_str(&item.tx_id)?,
+        tx_index: item.tx_index,
+        log_index: item.log_index,
+        daa_score: item.daa_score,
+    }
+});
+
+try_from!(item: &protowire::GetLogsRequestMessage, sophis_rpc_core::GetLogsRequest, {
+    Self {
+        contract_id: if item.contract_id.is_empty() { None } else { Some(item.contract_id.clone()) },
+        topics: item
+            .topics
+            .iter()
+            .map(|slot| if slot.present { Some(slot.topic.clone()) } else { None })
+            .collect(),
+        from_block: if item.from_block.is_empty() { None } else { Some(RpcHash::from_str(&item.from_block)?) },
+        to_block: if item.to_block.is_empty() { None } else { Some(RpcHash::from_str(&item.to_block)?) },
+        limit: if item.limit == 0 { None } else { Some(item.limit) },
+    }
+});
+
+try_from!(item: &protowire::GetLogsResponseMessage, RpcResult<sophis_rpc_core::GetLogsResponse>, {
+    Self {
+        logs: item.logs.iter().map(|l| l.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
 });
 
 try_from!(item: &protowire::GetBlocksRequestMessage, sophis_rpc_core::GetBlocksRequest, {
