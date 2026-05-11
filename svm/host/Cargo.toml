@@ -1,6 +1,6 @@
 [package]
 name = "sophis-svm-host"
-description = "Sophis sVM host functions — real Schnorr, Dilithium and SHA3-384 implementations"
+description = "Sophis sVM host functions — Dilithium ML-DSA-44 and SHA3-384 implementations"
 rust-version.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -12,7 +12,6 @@ repository.workspace = true
 [dependencies]
 sophis-svm-core.workspace = true
 sophis-svm-runtime.workspace = true
-secp256k1.workspace = true
 libcrux-ml-dsa.workspace = true
 sha3.workspace = true
 log.workspace = true
