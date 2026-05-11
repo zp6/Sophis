@@ -93,6 +93,7 @@ members = [
     "oracle/pqc-core",
     "oracle/pqc-contract",
     "oracle/pqc-publisher",
+    "oracle/pqc-tests",
     "oracle/verifier",
     "oracle/relayer",
     "oracle/contract",

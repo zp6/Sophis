@@ -7027,6 +7027,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sophis-oracle-pqc-tests"
+version = "1.1.0"
+dependencies = [
+ "borsh",
+ "sha3",
+ "sophis-oracle-pqc-contract",
+ "sophis-oracle-pqc-core",
+ "sophis-oracle-publisher",
+]
+
+[[package]]
 name = "sophis-oracle-publisher"
 version = "1.1.0"
 dependencies = [
