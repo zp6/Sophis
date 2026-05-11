@@ -361,8 +361,11 @@ struct PerFeedStateUtxo {
 }
 ```
 
-Read by the SDK (`sophis-oracle-sdk::GrpcBackend`) via
-`get_utxos_by_addresses(contract_address)` filtered to version 8.
+Read directly via the gRPC client (`get_utxos_by_addresses(contract_address)`
+filtered to SPK version 8). The previous `sophis-oracle-sdk::GrpcBackend`
+helper was deleted on 2026-05-11 (Phase 5 dead-stub cleanup); Phase 9
+consumers should use `sophis-oracle-pqc-core` and J4 event ingestion
+instead.
 
 ### 4.2 Contract config (one UTXO total)
 
@@ -435,7 +438,8 @@ with multisig (`UpgradePolicy::MultisigTimelock`) gating each.
   - Spin up sophisd devnet
   - Deploy the contract
   - Run `sophis-oracle-relayer relay-once` against it
-  - Read the resulting state UTXO via `sophis-oracle-sdk::FeedReader`
+  - Read the resulting state UTXO directly via the gRPC client
+    (`sophis-oracle-sdk` was deleted on 2026-05-11)
 
 ## 8. Reference symbols
 
@@ -449,12 +453,13 @@ The contract author needs these Rust symbols (all in
 | `BUNDLE_DOMAIN_V1` | `sophis-oracle-relayer::sign` | re-derive commitment |
 | `decode_wire(...)` | `sophis-oracle-relayer::sign` | parse wire payload |
 | `oracle_air_id_v1()`, `verify_air_id_v1()` | `svm-host::plonky3` (under `--features plonky3`) | AIR ids |
-| `FeedSnapshot` | `sophis-oracle-sdk` | borsh encode for state UTXO |
-| `FEED_STATE_VERSION = 8` | `sophis-oracle-sdk::grpc` (under `--features grpc-read`) | state UTXO SPK version |
+| `FeedSnapshot` | (was in deleted `sophis-oracle-sdk`) | borsh encode for state UTXO; re-derive from `sophis-oracle-core` types |
+| `FEED_STATE_VERSION = 8` | (was in deleted `sophis-oracle-sdk::grpc`) | state UTXO SPK version; hardcode `8` |
 
-The SDK's `FEED_STATE_VERSION` constant SHOULD be re-exported from a
-non-feature-gated crate (`sophis-oracle-core`?) for v2 — for v1 the
-contract author can hardcode `8`.
+The `sophis-oracle-sdk` crate was deleted on 2026-05-11. Phase 9 consumers
+should use `sophis-oracle-pqc-core` instead. Contract authors still
+building against Phase 5 can re-derive the snapshot types from
+`sophis-oracle-core` and hardcode `FEED_STATE_VERSION = 8`.
 
 ## 9. Test plan
 

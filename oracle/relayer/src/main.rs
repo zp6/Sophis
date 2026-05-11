@@ -1,4 +1,11 @@
-//! sophis-oracle-relayer — Phase 5 ZK-Oracle relayer binary.
+//! # DEPRECATED (2026-05-11)
+//!
+//! `sophis-oracle-relayer` — Phase 5 ZK-Oracle relayer binary, superseded
+//! by Phase 9 `sophis-oracle-publisher`. New operators should run the
+//! Phase 9 publisher CLI instead. Scheduled for removal after Phase 9
+//! publisher quorum bootstrap. See SIP-11 D11.
+//!
+//! ## Original Phase 5 relayer binary.
 //!
 //! Sub-phase 5.4 status:
 //!   - 5.4.a: CLI + config + skeleton (this file)

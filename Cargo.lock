@@ -6951,16 +6951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sophis-oracle-contract"
-version = "1.1.0"
-dependencies = [
- "borsh",
- "sophis-oracle-core",
- "sophis-oracle-verifier",
- "sophis-sdk",
-]
-
-[[package]]
 name = "sophis-oracle-core"
 version = "1.1.0"
 dependencies = [
@@ -7078,31 +7068,6 @@ dependencies = [
  "thiserror 1.0.64",
  "tokio",
  "toml 0.8.19",
-]
-
-[[package]]
-name = "sophis-oracle-sdk"
-version = "1.1.0"
-dependencies = [
- "async-trait",
- "borsh",
- "log",
- "sophis-addresses",
- "sophis-grpc-client",
- "sophis-notify",
- "sophis-oracle-core",
- "sophis-rpc-core",
- "thiserror 1.0.64",
- "tokio",
-]
-
-[[package]]
-name = "sophis-oracle-verifier"
-version = "1.1.0"
-dependencies = [
- "borsh",
- "sophis-oracle-core",
- "thiserror 1.0.64",
 ]
 
 [[package]]

@@ -63,8 +63,10 @@ pub struct RelayerBundle {
     pub scalar_mul_ha_proof: Option<(Vec<u8>, Vec<u8>)>,
 }
 
-/// Static policy the pipeline enforces before invoking the prover. Mirrors
-/// the on-chain `FeedPolicy` in `sophis-oracle-contract` so the relayer
+/// Static policy the pipeline enforces before invoking the prover. The
+/// matching on-chain `FeedPolicy` originally lived in the (now deleted)
+/// `sophis-oracle-contract` stub; an actual Phase 5 contract built off
+/// this relayer is expected to keep the same shape so the relayer
 /// rejects upstream what the contract would reject downstream.
 #[derive(Debug, Clone)]
 pub struct PipelinePolicy {

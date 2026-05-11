@@ -1,4 +1,17 @@
-//! Phase 5 — Plonky3 prover host.
+//! # DEPRECATED (2026-05-11)
+//!
+//! Phase 5 Plonky3 prover host (~13k LOC across ~55 ed25519/field25519/
+//! scalar25519/sha512 STARK chips) — superseded by Phase 9 direct
+//! Dilithium attestation. The largest pre-PQC surface in the workspace.
+//! Scheduled for removal after Phase 9 publisher quorum bootstrap. See
+//! SIP-11 D11.
+//!
+//! Note: `Capability::VerifyPlonky3Proof` and `svm/host/src/plonky3.rs`
+//! (the general-purpose STARK verifier) are NOT deprecated — they remain
+//! as future-proof primitives for Phase 9.x STARK aggregation or any
+//! other STARK use case.
+//!
+//! ## Original Phase 5 — Plonky3 prover host.
 //!
 //! Sub-phase 5.2 landed the AIR + soundness check. Sub-phase 5.2.0.1
 //! (this commit) wires the full STARK plumbing — `prove()` now returns

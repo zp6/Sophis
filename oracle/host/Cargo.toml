@@ -1,6 +1,6 @@
 [package]
 name = "sophis-oracle-host"
-description = "Phase 5 ZK-Oracle: Plonky3 prover host (sub-phase 5.2 — AIR + trace + soundness check via DebugConstraintBuilder)"
+description = "DEPRECATED (2026-05-11) — Phase 5 Plonky3 prover host (ed25519 STARK trust chain). Superseded by Phase 9 direct Dilithium attestation. Scheduled for removal after Phase 9 publisher quorum bootstrap. See SIP-11 D11."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

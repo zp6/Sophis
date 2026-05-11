@@ -633,13 +633,6 @@ async fn mergeset_size_limit_test() {
     consensus.shutdown(wait_handles);
 }
 
-// goref-* tests removed 2026-05-07: validavam paridade comportamental com o
-// kaspad Go reference implementation. Sophis divergiu fundamentalmente
-// (RandomX, Dilithium, MerkleHash384, devfund eliminado, supply 210M,
-// prefixos `sophis:`) — a paridade não é mais um objetivo do projeto.
-// Os outros testes do consensus em `consensus_integration_tests.rs`
-// cobrem os caminhos GHOSTDAG/pruning correspondentes.
-
 #[tokio::test]
 async fn bounded_merge_depth_test() {
     init_allocator_with_default_settings();

@@ -86,18 +86,21 @@ members = [
     # standalone repository on 2026-05-04. Cross-chain interoperability is
     # intentionally out-of-scope for the Sophis core team. See the project
     # memory `project_zkbridge_extraido.md` for context.
-    # Phase 5 — ZK-Oracle Aggregator (Pyth singleton + Plonky3 + Dilithium relayer)
-    "oracle/core",
-    "oracle/feeds",
-    "oracle/host",
+    # Phase 9 — PQC-native oracle (Dilithium ML-DSA-44 direct, no STARK trust chain)
     "oracle/pqc-core",
     "oracle/pqc-contract",
     "oracle/pqc-publisher",
     "oracle/pqc-tests",
-    "oracle/verifier",
+    # Phase 5 — DEPRECATED ZK-Oracle Aggregator (ed25519 STARK trust chain).
+    # Superseded by Phase 9 (oracle/pqc-*). Scheduled for removal after Phase 9
+    # publisher quorum bootstrap (≥3 publishers + 7-day consistency window).
+    # See SIP-11 D11 (dual-path migration). Dead stub crates oracle/{verifier,
+    # contract,sdk} were deleted on 2026-05-11; the four below remain only
+    # while indexers fall back to Phase 5 prior to the flip.
+    "oracle/core",
+    "oracle/feeds",
+    "oracle/host",
     "oracle/relayer",
-    "oracle/contract",
-    "oracle/sdk",
     "tools/sophis-da-stress",
     "tools/sophis-dashboard",
     "tools/sophis-calculator",
@@ -186,15 +189,14 @@ sophis-rollup-verifier   = { version = "1.1.0", path = "rollup/verifier" }
 sophis-rollup-sequencer  = { version = "1.1.0", path = "rollup/sequencer" }
 sophis-bridge-deposit    = { version = "1.1.0", path = "rollup/bridge/deposit" }
 sophis-bridge-withdrawal = { version = "1.1.0", path = "rollup/bridge/withdrawal" }
-sophis-oracle-core       = { version = "1.1.0", path = "oracle/core" }
-sophis-oracle-feeds      = { version = "1.1.0", path = "oracle/feeds" }
+# Phase 9 — PQC-native oracle
 sophis-oracle-pqc-core      = { version = "1.1.0", path = "oracle/pqc-core" }
 sophis-oracle-pqc-contract  = { version = "1.1.0", path = "oracle/pqc-contract" }
 sophis-oracle-publisher     = { version = "1.1.0", path = "oracle/pqc-publisher" }
+# Phase 5 — DEPRECATED (see members list above for retirement criteria)
+sophis-oracle-core       = { version = "1.1.0", path = "oracle/core" }
+sophis-oracle-feeds      = { version = "1.1.0", path = "oracle/feeds" }
 sophis-oracle-host       = { version = "1.1.0", path = "oracle/host" }
-sophis-oracle-verifier   = { version = "1.1.0", path = "oracle/verifier" }
-sophis-oracle-contract   = { version = "1.1.0", path = "oracle/contract" }
-sophis-oracle-sdk        = { version = "1.1.0", path = "oracle/sdk" }
 
 # external
 ahash = "0.8.6"

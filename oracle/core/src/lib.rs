@@ -1,18 +1,27 @@
-//! Phase 5 — ZK-Oracle Aggregator: shared types.
+//! # DEPRECATED (2026-05-11)
 //!
-//! Architecture (decision 2026-05-05):
+//! Phase 5 ZK-Oracle Aggregator — superseded by Phase 9 (`oracle/pqc-*`).
+//! New consumers should use `sophis-oracle-pqc-core` and the dual-path
+//! dispatch helpers in `pqc-core::source` to read prices.
+//!
+//! This crate remains only while indexers fall back to Phase 5 prior to
+//! the Phase 9 flip (≥3 publishers + 7-day consistency window — see
+//! SIP-11 D11). It will be deleted in the cleanup commit that follows
+//! `evaluate_flip(...) == Flip` reaching production indexers.
+//!
+//! ## Original Phase 5 architecture (for reference)
+//!
 //! - Source: Pyth (Pythnet pull) — single publisher (no Wormhole, no multisig).
 //! - Proof: Plonky3 STARK over `(ed25519_sig_valid, freshness, bounds, payload_hash)`.
 //! - Operator: Sophis-controlled relayer signs the aggregated batch with
 //!   Dilithium ML-DSA-44 (PQC-resistant on the Sophis-controlled boundary).
 //! - On-chain: a sVM contract verifies the STARK via
-//!   `Capability::VerifyPlonky3Proof` (added in parallel to the Phase 3
-//!   `VerifyRisc0Proof`; the two coexist) plus the relayer's Dilithium
-//!   signature, then writes the price into oracle state.
+//!   `Capability::VerifyPlonky3Proof` plus the relayer's Dilithium signature.
 //!
 //! This crate intentionally has no Plonky3, Pythnet, or Dilithium dependencies
 //! — those live in the downstream crates (`oracle/feeds`, `oracle/host`,
-//! `oracle/verifier`, `oracle/relayer`, `oracle/contract`).
+//! `oracle/relayer`). The dead stub crates `oracle/{verifier,contract,sdk}`
+//! that previously appeared here were deleted on 2026-05-11.
 
 pub mod error;
 pub mod journal;

@@ -95,7 +95,10 @@ SPK version 8. The script field of that UTXO is:
 borsh((FeedId, FeedSnapshot)) → 8 + 60 = 68 bytes
 ```
 
-The SDK (`sophis-oracle-sdk`) reads exactly this layout.
+This layout was previously surfaced by the `sophis-oracle-sdk` crate
+(deleted 2026-05-11). Phase 9 consumers should use
+`sophis-oracle-pqc-core` instead; remaining Phase 5 consumers can decode
+this borsh tuple directly from the UTXO's `script_public_key.script`.
 
 ## 3. Bundle commitment
 

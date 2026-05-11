@@ -1,6 +1,6 @@
 [package]
 name = "sophis-oracle-feeds"
-description = "Phase 5 ZK-Oracle: Pythnet pull adapter (singleton publisher). Sub-phase 5.1."
+description = "DEPRECATED (2026-05-11) — Phase 5 Pythnet pull adapter. Superseded by Phase 9 publisher-side data fetching. Scheduled for removal after Phase 9 publisher quorum bootstrap. See SIP-11 D11."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

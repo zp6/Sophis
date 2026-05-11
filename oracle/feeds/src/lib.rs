@@ -1,4 +1,11 @@
-//! Phase 5 — Pythnet pull adapter (sub-phase 5.1).
+//! # DEPRECATED (2026-05-11)
+//!
+//! Phase 5 Pythnet pull adapter — superseded by Phase 9, where each
+//! publisher fetches its own data source (any provider) and signs directly
+//! with Dilithium. Scheduled for removal after Phase 9 publisher quorum
+//! bootstrap. See SIP-11 D11.
+//!
+//! ## Original Phase 5 — Pythnet pull adapter (sub-phase 5.1).
 //!
 //! Real implementation of the singleton Pyth feed:
 //!

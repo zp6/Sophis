@@ -1,6 +1,6 @@
 [package]
 name = "sophis-oracle-core"
-description = "Phase 5 ZK-Oracle: shared types, journal layout, hashing helpers (Pyth singleton + Plonky3 + Dilithium relayer)"
+description = "DEPRECATED (2026-05-11) — Phase 5 ZK-Oracle shared types. Superseded by sophis-oracle-pqc-core (Phase 9). Scheduled for removal after Phase 9 publisher quorum bootstrap. See SIP-11 D11."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

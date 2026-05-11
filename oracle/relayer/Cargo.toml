@@ -1,6 +1,6 @@
 [package]
 name = "sophis-oracle-relayer"
-description = "Phase 5 ZK-Oracle: relayer binary. Pulls Pyth feed, generates Plonky3 proof, signs with Dilithium, submits L1 tx. Sub-phase 5.4."
+description = "DEPRECATED (2026-05-11) — Phase 5 ZK-Oracle relayer binary. Superseded by Phase 9 sophis-oracle-publisher (per-publisher direct submission). Scheduled for removal after Phase 9 publisher quorum bootstrap. See SIP-11 D11."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
