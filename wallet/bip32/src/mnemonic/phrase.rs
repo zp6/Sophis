@@ -244,16 +244,17 @@ impl Drop for Mnemonic {
     }
 }
 
+// Test vectors that exercised xprv string serialization against the
+// secp256k1 ExtendedPrivateKey path were removed when the BIP-32 EC stack
+// was deleted in the pre-mainnet PQC cleanup sweep. Re-adding coverage
+// would require a Dilithium-native HD scheme (deferred to a post-mainnet
+// SIP — see docs/PRE_MAINNET_AUDIT.md).
 #[cfg(test)]
 mod tests {
-    use super::Mnemonic;
-    use crate::ExtendedPrivateKey;
-    use crate::Language;
-    use crate::Prefix;
-    use crate::SecretKey;
+    use super::{Language, Mnemonic};
 
     #[test]
-    pub fn tests() {
+    pub fn mnemonic_roundtrips_english() {
         let data = [
             [
                 "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote",
@@ -307,25 +308,13 @@ mod tests {
             ],
         ];
 
-        for [seed_words, xprv_str] in data {
-            let mnemonic = match Mnemonic::new(seed_words, Language::English) {
-                Ok(v) => v,
-                Err(err) => {
-                    println!("Mnemonic::new:err {err:?}, seed_words: {seed_words}");
-                    return;
-                }
-            };
-
+        for [seed_words, _legacy_xprv_str] in data {
+            let mnemonic = Mnemonic::new(seed_words, Language::English)
+                .unwrap_or_else(|err| panic!("Mnemonic::new failed for {seed_words:?}: {err:?}"));
+            assert_eq!(mnemonic.phrase(), seed_words);
+            // to_seed must return 64 deterministic bytes for the BIP-39 PBKDF2 path.
             let seed = mnemonic.to_seed("");
-            let xprv = ExtendedPrivateKey::<SecretKey>::new(seed).unwrap();
-            let prefix = if xprv_str.starts_with("kp") {
-                Prefix::KPRV
-            } else if xprv_str.starts_with("kt") {
-                Prefix::KTRV
-            } else {
-                Prefix::XPRV
-            };
-            assert_eq!(&xprv.to_string(prefix).to_string(), xprv_str, "xprv is not valid");
+            assert_eq!(seed.as_bytes().len(), 64);
         }
     }
 }

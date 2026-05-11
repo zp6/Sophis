@@ -18,7 +18,6 @@ crate-type = ["cdylib"]
 cfg-if.workspace = true
 js-sys.workspace = true
 sophis-addresses.workspace = true
-sophis-bip32.workspace = true
 sophis-consensus-core.workspace = true
 sophis-consensus-wasm.workspace = true
 sophis-core.workspace = true
@@ -28,8 +27,6 @@ sophis-txscript.workspace = true
 sophis-rpc-core.workspace = true
 sophis-utils.workspace = true
 sophis-wasm-core.workspace = true
-sophis-wallet-core.workspace = true
-sophis-wallet-keys.workspace = true
 sophis-wrpc-client.workspace = true
 sophis-wrpc-wasm.workspace = true
 num.workspace = true
@@ -40,12 +37,10 @@ workflow-wasm.workspace = true
 
 [features]
 wasm32-sdk = [
-    "sophis-wallet-core/wasm32-sdk",
     "sophis-pow/wasm32-sdk",
     "sophis-txscript/wasm32-sdk",
 ]
 wasm32-core = [
-    "sophis-wallet-core/wasm32-core",
     "sophis-pow/wasm32-sdk",
     "sophis-txscript/wasm32-sdk",
 ]

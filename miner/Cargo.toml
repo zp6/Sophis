@@ -15,7 +15,6 @@ path = "src/main.rs"
 
 [dependencies]
 sophis-addresses.workspace = true
-sophis-bip32.workspace = true
 sophis-consensus-core.workspace = true
 sophis-core.workspace = true
 sophis-grpc-client.workspace = true

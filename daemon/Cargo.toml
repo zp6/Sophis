@@ -17,7 +17,6 @@ downcast-rs.workspace = true
 futures.workspace = true
 sophis-addresses.workspace = true
 sophis-consensus-core.workspace = true
-sophis-wallet-core.workspace = true
 nw-sys.workspace = true
 serde.workspace = true
 thiserror.workspace = true

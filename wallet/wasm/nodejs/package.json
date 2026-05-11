@@ -1,7 +1,0 @@
-{
-    "name" : "sophis-wallet-example",
-    "version" : "1.0.0",
-    "dependencies": {
-        "websocket" : "1.0.34"
-    }
-}
