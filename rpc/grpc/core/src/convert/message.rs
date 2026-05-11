@@ -1008,6 +1008,47 @@ try_from!(item: &protowire::GetLogsResponseMessage, RpcResult<sophis_rpc_core::G
     }
 });
 
+// L3 — Block commitment levels (sub-fase L3)
+from!(item: &sophis_rpc_core::RpcBlockCommitment, protowire::RpcBlockCommitmentEntry, {
+    Self {
+        block_hash: item.block_hash.to_string(),
+        block_blue_score: item.block_blue_score,
+        current_blue_score: item.current_blue_score,
+        confirmations: item.confirmations,
+        is_chain_block: item.is_chain_block,
+        commitment: item.commitment.as_u8() as u32,
+    }
+});
+
+from!(item: &sophis_rpc_core::GetBlockCommitmentRequest, protowire::GetBlockCommitmentRequestMessage, {
+    Self { block_hash: item.block_hash.to_string() }
+});
+
+from!(item: RpcResult<&sophis_rpc_core::GetBlockCommitmentResponse>, protowire::GetBlockCommitmentResponseMessage, {
+    Self { commitment: item.commitment.iter().map(|c| c.into()).collect(), error: None }
+});
+
+try_from!(item: &protowire::RpcBlockCommitmentEntry, sophis_rpc_core::RpcBlockCommitment, {
+    let commitment = sophis_rpc_core::RpcCommitmentLevel::from_u8(item.commitment as u8)
+        .ok_or_else(|| RpcError::General(format!("invalid commitment level byte {}", item.commitment)))?;
+    Self {
+        block_hash: RpcHash::from_str(&item.block_hash)?,
+        block_blue_score: item.block_blue_score,
+        current_blue_score: item.current_blue_score,
+        confirmations: item.confirmations,
+        is_chain_block: item.is_chain_block,
+        commitment,
+    }
+});
+
+try_from!(item: &protowire::GetBlockCommitmentRequestMessage, sophis_rpc_core::GetBlockCommitmentRequest, {
+    Self { block_hash: RpcHash::from_str(&item.block_hash)? }
+});
+
+try_from!(item: &protowire::GetBlockCommitmentResponseMessage, RpcResult<sophis_rpc_core::GetBlockCommitmentResponse>, {
+    Self { commitment: item.commitment.first().map(|c| c.try_into()).transpose()? }
+});
+
 try_from!(item: &protowire::GetBlocksRequestMessage, sophis_rpc_core::GetBlocksRequest, {
     Self {
         low_hash: if item.low_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.low_hash)?) },

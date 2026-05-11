@@ -533,6 +533,12 @@ impl ConsensusSessionOwned {
     ) -> Vec<sophis_consensus_core::events::EventLog> {
         self.clone().spawn_blocking(move |c| c.get_logs(filter)).await
     }
+
+    // -- L3 — Block commitment levels accessor (sub-fase L3) --
+
+    pub async fn async_get_block_commitment(&self, block_hash: Hash) -> Option<sophis_consensus_core::commitment::BlockCommitment> {
+        self.clone().spawn_blocking(move |c| c.get_block_commitment(block_hash)).await
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

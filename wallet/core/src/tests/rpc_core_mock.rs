@@ -440,6 +440,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_block_commitment_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: sophis_rpc_core::model::commitment::GetBlockCommitmentRequest,
+    ) -> RpcResult<sophis_rpc_core::model::commitment::GetBlockCommitmentResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

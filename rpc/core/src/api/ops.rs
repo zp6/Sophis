@@ -154,6 +154,9 @@ pub enum RpcApiOps {
     // ---- J4 — sVM Event Logs ----
     /// Filter sVM event logs (eth_getLogs equivalent).
     GetLogs = 157,
+    // ---- L3 — Block commitment levels ----
+    /// Per-block commitment level (Pending/Accepted/Confirmed/Finalized).
+    GetBlockCommitment = 158,
 }
 
 impl RpcApiOps {

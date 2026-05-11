@@ -75,6 +75,8 @@ message SophisdRequest {
     GetDaPayloadStatusRequestMessage getDaPayloadStatusRequest = 1124;
     // J4 — sVM Event Logs (sub-fase J4.5.b)
     GetLogsRequestMessage getLogsRequest = 1126;
+    // L3 — Block commitment levels (sub-fase L3)
+    GetBlockCommitmentRequestMessage getBlockCommitmentRequest = 1128;
   }
 }
 
@@ -150,6 +152,8 @@ message SophisdResponse {
     GetDaPayloadStatusResponseMessage getDaPayloadStatusResponse = 1125;
     // J4 — sVM Event Logs (sub-fase J4.5.b)
     GetLogsResponseMessage getLogsResponse = 1127;
+    // L3 — Block commitment levels (sub-fase L3)
+    GetBlockCommitmentResponseMessage getBlockCommitmentResponse = 1129;
   }
 }
 

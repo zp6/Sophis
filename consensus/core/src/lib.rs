@@ -20,6 +20,7 @@ pub mod block;
 pub mod blockhash;
 pub mod blockstatus;
 pub mod coinbase;
+pub mod commitment;
 pub mod config;
 pub mod constants;
 pub mod da;

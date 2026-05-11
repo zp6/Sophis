@@ -850,6 +850,24 @@ async fn sanity_test() {
                     assert!(response.logs.is_empty());
                 })
             }
+            // L3 — Block commitment levels. Round-trips a request through
+            // the gRPC plumbing and asserts the unknown-block None shape.
+            SophisdPayloadOps::GetBlockCommitment => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_block_commitment_call(
+                            None,
+                            sophis_rpc_core::model::commitment::GetBlockCommitmentRequest::new(sophis_rpc_core::RpcHash::from_slice(
+                                &[0xFFu8; 32],
+                            )),
+                        )
+                        .await
+                        .unwrap();
+                    // Unknown hash → None.
+                    assert!(response.commitment.is_none());
+                })
+            }
         };
         tasks.push(task);
     }

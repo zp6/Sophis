@@ -1237,3 +1237,28 @@ message GetLogsResponseMessage {
 
   RPCError error = 1000;
 }
+
+// ----------------------------------------------------------------
+// L3 — Block commitment levels (sub-fase L3)
+// ----------------------------------------------------------------
+
+// commitment level wire byte: Pending=0, Accepted=1, Confirmed=2, Finalized=3
+message RpcBlockCommitmentEntry {
+  string block_hash = 1;
+  uint64 block_blue_score = 2;
+  uint64 current_blue_score = 3;
+  uint64 confirmations = 4;
+  bool is_chain_block = 5;
+  uint32 commitment = 6;
+}
+
+message GetBlockCommitmentRequestMessage {
+  string block_hash = 1;
+}
+
+message GetBlockCommitmentResponseMessage {
+  // 0 or 1 elements (proto3 has no native Option for messages)
+  repeated RpcBlockCommitmentEntry commitment = 1;
+
+  RPCError error = 1000;
+}

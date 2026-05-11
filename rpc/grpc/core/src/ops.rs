@@ -100,6 +100,9 @@ pub enum SophisdPayloadOps {
     // J4 — sVM Event Logs (sub-fase J4.5.b)
     GetLogs,
 
+    // L3 — Block commitment levels (sub-fase L3)
+    GetBlockCommitment,
+
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
     NotifyNewBlockTemplate,

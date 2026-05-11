@@ -4,6 +4,7 @@
 pub mod address;
 pub mod block;
 pub mod blue_work;
+pub mod commitment;
 pub mod da;
 pub mod events;
 pub mod feerate_estimate;
@@ -24,6 +25,7 @@ pub mod verbosity;
 pub use address::*;
 pub use block::*;
 pub use blue_work::*;
+pub use commitment::*;
 pub use da::*;
 pub use events::*;
 pub use feerate_estimate::*;

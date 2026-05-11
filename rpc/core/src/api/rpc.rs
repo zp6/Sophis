@@ -605,6 +605,23 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetLogsRequest,
     ) -> RpcResult<GetLogsResponse>;
+
+    // ----------------------------------------------------------------
+    // L3 — Block commitment levels (sub-fase L3)
+    // See `docs/L3_COMMITMENT_DESIGN.md`.
+    // ----------------------------------------------------------------
+
+    /// Returns the commitment level of `block_hash` relative to the
+    /// node's current selected-chain view. `None` if the block is
+    /// unknown to the node (not in DB or pruned).
+    async fn get_block_commitment(&self, block_hash: RpcHash) -> RpcResult<Option<RpcBlockCommitment>> {
+        Ok(self.get_block_commitment_call(None, GetBlockCommitmentRequest::new(block_hash)).await?.commitment)
+    }
+    async fn get_block_commitment_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetBlockCommitmentRequest,
+    ) -> RpcResult<GetBlockCommitmentResponse>;
 }
 
 pub type DynRpcService = Arc<dyn RpcApi>;

@@ -33,7 +33,7 @@ use sophis_rpc_core::{
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
-    model::{da::*, events::*, message::*},
+    model::{commitment::*, da::*, events::*, message::*},
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
 };
 use sophis_utils::{channel::Channel, triggers::DuplexTrigger};
@@ -288,6 +288,9 @@ impl RpcApi for GrpcClient {
 
     // J4 — sVM Event Logs gRPC binding (sub-fase J4.5.b)
     route!(get_logs_call, GetLogs);
+
+    // L3 — Block commitment levels gRPC binding (sub-fase L3)
+    route!(get_block_commitment_call, GetBlockCommitment);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

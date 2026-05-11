@@ -1443,6 +1443,32 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     // J4 — sVM Event Logs RPC (sub-fase J4.5.a)
     // ---------------------------------------------------------------
 
+    async fn get_block_commitment_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBlockCommitmentRequest,
+    ) -> RpcResult<GetBlockCommitmentResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let result = session.async_get_block_commitment(request.block_hash).await;
+        Ok(GetBlockCommitmentResponse::new(result.map(|c| {
+            use sophis_rpc_core::model::commitment::{RpcBlockCommitment, RpcCommitmentLevel};
+            let level = match c.commitment {
+                sophis_consensus_core::commitment::CommitmentLevel::Pending => RpcCommitmentLevel::Pending,
+                sophis_consensus_core::commitment::CommitmentLevel::Accepted => RpcCommitmentLevel::Accepted,
+                sophis_consensus_core::commitment::CommitmentLevel::Confirmed => RpcCommitmentLevel::Confirmed,
+                sophis_consensus_core::commitment::CommitmentLevel::Finalized => RpcCommitmentLevel::Finalized,
+            };
+            RpcBlockCommitment {
+                block_hash: c.block_hash,
+                block_blue_score: c.block_blue_score,
+                current_blue_score: c.current_blue_score,
+                confirmations: c.confirmations,
+                is_chain_block: c.is_chain_block,
+                commitment: level,
+            }
+        })))
+    }
+
     async fn get_logs_call(
         &self,
         _connection: Option<&DynRpcConnection>,

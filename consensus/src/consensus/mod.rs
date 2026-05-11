@@ -1462,6 +1462,24 @@ impl ConsensusApi for Consensus {
 
     // -- J4 — sVM Event Logs accessor (sub-fase J4.5) --
 
+    // -- L3 — Block commitment levels accessor (sub-fase L3) --
+
+    fn get_block_commitment(&self, block_hash: Hash) -> Option<sophis_consensus_core::commitment::BlockCommitment> {
+        use crate::model::stores::selected_chain::SelectedChainStoreReader;
+        use sophis_consensus_core::commitment::BlockCommitment;
+
+        // Resolve the block's blue score; if the headers store does not
+        // know the hash, the block is unknown / pruned → None.
+        let block_blue_score = self.headers_store.get_blue_score(block_hash).ok()?;
+        let current_blue_score = self.get_sink_blue_score();
+        // selected_chain_store maps block_hash → chain_index. Ok = on
+        // chain; Err = off chain or unknown. We've already confirmed the
+        // header exists, so Err here means "off chain".
+        let is_chain_block = self.storage.selected_chain_store.read().get_by_hash(block_hash).is_ok();
+        let finality_depth = self.config.params.finality_depth();
+        Some(BlockCommitment::classify(block_hash, block_blue_score, current_blue_score, is_chain_block, finality_depth))
+    }
+
     fn get_logs(&self, filter: sophis_consensus_core::events::EventLogFilter) -> Vec<sophis_consensus_core::events::EventLog> {
         use crate::model::stores::events::EventStoreReader;
         use crate::model::stores::headers::HeaderStoreReader;

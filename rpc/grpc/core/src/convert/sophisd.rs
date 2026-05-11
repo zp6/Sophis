@@ -76,6 +76,9 @@ pub mod sophisd_request_convert {
     // J4 — sVM Event Logs (sub-fase J4.5.b)
     impl_into_sophisd_request!(GetLogs);
 
+    // L3 — Block commitment levels (sub-fase L3)
+    impl_into_sophisd_request!(GetBlockCommitment);
+
     impl_into_sophisd_request!(NotifyBlockAdded);
     impl_into_sophisd_request!(NotifyNewBlockTemplate);
     impl_into_sophisd_request!(NotifyUtxosChanged);
@@ -224,6 +227,9 @@ pub mod sophisd_response_convert {
 
     // J4 — sVM Event Logs (sub-fase J4.5.b)
     impl_into_sophisd_response!(GetLogs);
+
+    // L3 — Block commitment levels (sub-fase L3)
+    impl_into_sophisd_response!(GetBlockCommitment);
 
     impl_into_sophisd_notify_response!(NotifyBlockAdded);
     impl_into_sophisd_notify_response!(NotifyNewBlockTemplate);

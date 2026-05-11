@@ -471,6 +471,16 @@ pub trait ConsensusApi: Send + Sync {
     fn get_logs(&self, _filter: crate::events::EventLogFilter) -> Vec<crate::events::EventLog> {
         Vec::new()
     }
+
+    // -- L3 — Block commitment levels accessor (sub-fase L3) --
+
+    /// Returns the commitment status of `block_hash` per
+    /// `docs/L3_COMMITMENT_DESIGN.md`. `None` if the block is unknown
+    /// to the node (not in DB or pruned). Defaults to `None` so
+    /// existing mocks keep compiling.
+    fn get_block_commitment(&self, _block_hash: Hash) -> Option<crate::commitment::BlockCommitment> {
+        None
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

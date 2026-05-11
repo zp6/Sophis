@@ -55,6 +55,8 @@ impl Router {
                 GetDaPayloadStatus,
                 // J4 — sVM Event Logs (sub-fase J4.5.c)
                 GetLogs,
+                // L3 — Block commitment levels (sub-fase L3)
+                GetBlockCommitment,
                 GetDaaScoreTimestampEstimate,
                 GetUtxoReturnAddress,
                 GetCurrentNetwork,
