@@ -202,10 +202,10 @@ pub enum Opcodes {
     /// Crypto opcodes.
     OpSHA256 = 0xa8,
 
-    OpReserved_a9 = 0xa9,
+    OpReservedA9 = 0xa9,
 
     OpBlake2b = 0xaa,
-    OpReserved_ab = 0xab,
+    OpReservedAb = 0xab,
     OpCheckSig = 0xac,
     OpCheckSigVerify = 0xad,
     OpCheckMultiSig = 0xae,

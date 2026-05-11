@@ -205,8 +205,8 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
         match op {
             Ok(op) => {
                 match op.value() {
-                    codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpReserved_ab => num_sigs += 1,
-                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpReserved_a9 => {
+                    codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpReservedAb => num_sigs += 1,
+                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpReservedA9 => {
                         if i == 0 {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                             continue;

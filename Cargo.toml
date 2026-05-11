@@ -190,10 +190,8 @@ sophis-oracle-contract   = { version = "1.1.0", path = "oracle/contract" }
 sophis-oracle-sdk        = { version = "1.1.0", path = "oracle/sdk" }
 
 # external
-aes = "0.8.3"
 ahash = "0.8.6"
 arc-swap = "1.6.0"
-argon2 = "0.5.2"
 async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
 async-stream = "0.3.5"
@@ -206,15 +204,12 @@ borsh = { version = "1.5.1", features = ["derive", "rc"] }
 bs58 = { version = "0.5.0", features = ["check"], default-features = false }
 bytes = "1.7.1"
 cc = "1.0.83"
-cfb-mode = "0.8.2"
 cfg-if = "1.0.0"
-chacha20poly1305 = "0.10.1"
 clap = { version = "4.5.35", features = ["derive", "string", "cargo"] }
 convert_case = "0.6.0"
 criterion = { version = "0.5.1", default-features = false }
 crossbeam-channel = "0.5.8"
 ctrlc = "3.4.1"
-crypto_box = { version = "0.9.1", features = ["chacha20"] }
 dashmap = "6.0.1"
 derivative = "2.2.0"
 derive_builder = "0.20.0"
@@ -227,7 +222,6 @@ downcast-rs = "1.2.0"
 duration-string = "0.4.0"
 enum-primitive-derive = "0.3.0"
 event-listener = "2.5.3" # TODO "3.0.1"
-evpkdf = "0.2.0"
 faster-hex = "0.9.0"
 fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
@@ -261,7 +255,6 @@ mac_address = "1.1.7"
 # at the boundary so callers continue to use u64 storage.
 malachite-base = "0.4.4"
 malachite-nz = "0.4.4"
-md-5 = "0.10.6"
 num = "0.4.1"
 num_cpus = "1.16.0"
 num-traits = "0.2.17"
@@ -292,7 +285,6 @@ serde_json = "1.0.107"
 serde_repr = "0.1.18"
 serde-value = "0.7.0"
 serde-wasm-bindgen = "0.6.1"
-sha1 = "0.10.6"
 sha2 = "0.10.8"
 sha3 = "0.10.8"
 slugify-rs = "0.0.3"

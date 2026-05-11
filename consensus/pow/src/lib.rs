@@ -31,7 +31,7 @@ fn epoch_seed(daa_score: u64) -> [u8; 8] {
 
 // ---------------------------------------------------------------------------
 // Thread-local state
-//   THREAD_EPOCH_CACHE — one Argon2 cache per epoch per thread (light mode).
+//   THREAD_EPOCH_CACHE — one RandomX cache per epoch per thread (light mode).
 //   THREAD_VM          — one VM per epoch per thread (light or fast mode).
 //     Keyed by epoch_num: the VM is reused for every block template in the
 //     same epoch, because the underlying RandomX program only depends on the
@@ -112,7 +112,7 @@ impl State {
         {
             let flags = RandomXFlag::get_recommended_flags();
 
-            // Reuse or rebuild the Argon2 cache depending on the current epoch.
+            // Reuse or rebuild the RandomX cache depending on the current epoch.
             let cache = THREAD_EPOCH_CACHE.with(|cell| {
                 let mut slot = cell.borrow_mut();
                 if let Some((cached_epoch, ref cached_cache)) = *slot
@@ -149,9 +149,9 @@ impl State {
         let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
         let epoch_num = header.daa_score / EPOCH_LENGTH;
         let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
-        // Reuse the thread-local cache (same Argon2 cost as light mode — once per epoch).
+        // Reuse the thread-local cache (same RandomX cache build cost as light mode — once per epoch).
         // The cache is not used for hashing in fast mode (VM uses the dataset),
-        // but THREAD_EPOCH_CACHE avoids rebuilding Argon2 on every template call.
+        // but THREAD_EPOCH_CACHE avoids rebuilding the RandomX cache on every template call.
         let cache_flags = RandomXFlag::get_recommended_flags();
         let cache = THREAD_EPOCH_CACHE.with(|cell| {
             let mut slot = cell.borrow_mut();

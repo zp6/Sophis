@@ -731,7 +731,7 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpReserved_a9<0xa9, 1>(self, vm) {
+    opcode OpReservedA9<0xa9, 1>(self, vm) {
         vm.op_check_multisig_disabled()
     }
 
@@ -743,7 +743,7 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpReserved_ab<0xab, 1>(self, vm) {
+    opcode OpReservedAb<0xab, 1>(self, vm) {
         // Reserved byte; signature checking on Sophis uses Dilithium at
         // opcode 0xc4 (OP_CHECKSIG_DILITHIUM).
         Err(TxScriptError::OpcodeDisabled("opcode 0xab is reserved in Sophis (PQC-only; use OP_CHECKSIG_DILITHIUM at 0xc4)".to_string()))
