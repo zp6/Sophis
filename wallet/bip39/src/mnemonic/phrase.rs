@@ -244,11 +244,8 @@ impl Drop for Mnemonic {
     }
 }
 
-// Test vectors that exercised xprv string serialization against the
-// secp256k1 ExtendedPrivateKey path were removed when the BIP-32 EC stack
-// was deleted in the pre-mainnet PQC cleanup sweep. Re-adding coverage
-// would require a Dilithium-native HD scheme (deferred to a post-mainnet
-// SIP — see docs/PRE_MAINNET_AUDIT.md).
+// HD-key serialization test coverage is deferred to a future Sophis-native
+// HD scheme — see docs/PRE_MAINNET_AUDIT.md.
 #[cfg(test)]
 mod tests {
     use super::{Language, Mnemonic};

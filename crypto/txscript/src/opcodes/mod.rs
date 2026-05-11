@@ -731,8 +731,8 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
-        vm.op_check_multisig_schnorr_or_ecdsa(true)
+    opcode OpReserved_a9<0xa9, 1>(self, vm) {
+        vm.op_check_multisig_disabled()
     }
 
     opcode OpBlake2b<0xaa, 1>(self, vm) {
@@ -743,23 +743,24 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
-        // ECDSA is not supported in Sophis (PQC-only chain). Opcode is disabled.
-        Err(TxScriptError::OpcodeDisabled("OpCheckSigECDSA is disabled in Sophis".to_string()))
+    opcode OpReserved_ab<0xab, 1>(self, vm) {
+        // Reserved byte; signature checking on Sophis uses Dilithium at
+        // opcode 0xc4 (OP_CHECKSIG_DILITHIUM).
+        Err(TxScriptError::OpcodeDisabled("opcode 0xab is reserved in Sophis (PQC-only; use OP_CHECKSIG_DILITHIUM at 0xc4)".to_string()))
     }
 
     opcode OpCheckSig<0xac, 1>(self, vm) {
-        // Schnorr (secp256k1) is not supported in Sophis (PQC-only chain). Opcode is disabled.
-        Err(TxScriptError::OpcodeDisabled("OpCheckSig (Schnorr) is disabled in Sophis".to_string()))
+        // Disabled in Sophis (PQC-only chain); Dilithium uses opcode 0xc4.
+        Err(TxScriptError::OpcodeDisabled("OpCheckSig is disabled in Sophis (PQC-only; use OP_CHECKSIG_DILITHIUM at 0xc4)".to_string()))
     }
 
     opcode OpCheckSigVerify<0xad, 1>(self, vm) {
-        // Schnorr (secp256k1) is not supported in Sophis (PQC-only chain). Opcode is disabled.
-        Err(TxScriptError::OpcodeDisabled("OpCheckSigVerify (Schnorr) is disabled in Sophis".to_string()))
+        // Disabled in Sophis (PQC-only chain); Dilithium uses opcode 0xc4.
+        Err(TxScriptError::OpcodeDisabled("OpCheckSigVerify is disabled in Sophis (PQC-only; use OP_CHECKSIG_DILITHIUM at 0xc4)".to_string()))
     }
 
     opcode OpCheckMultiSig<0xae, 1>(self, vm) {
-        vm.op_check_multisig_schnorr_or_ecdsa(false)
+        vm.op_check_multisig_disabled()
     }
 
     opcode OpCheckMultiSigVerify<0xaf, 1>(self, vm) {
@@ -1261,7 +1262,7 @@ mod test {
     }
 
     #[test]
-    #[ignore = "TODO Sophis: roundtrip opcode list includes Schnorr-era ops; rebuild for Dilithium-only set."]
+    #[ignore = "TODO Sophis: roundtrip opcode list includes disabled legacy ops; rebuild for Dilithium-only opcode set."]
     fn test_script_builder_roundtrip_to_joined_opcode_string() {
         use opcodes::codes::{OpBlake2b, OpCheckSig, OpDrop, OpDup, OpEqualVerify, OpVerify};
 

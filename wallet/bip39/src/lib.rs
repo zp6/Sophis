@@ -1,9 +1,7 @@
-// Sophis is Dilithium-only at the transaction layer. The original Kaspa-era
-// BIP-32 secp256k1 extended-key derivation paths were removed in the
-// pre-mainnet PQC cleanup sweep; this crate retains only the pure BIP-39
-// mnemonic stack plus the BIP-32 metadata types (DerivationPath,
-// KeyFingerprint, ChildNumber, ExtendedKeyAttrs, Prefix) that downstream
-// crates use for key-path bookkeeping without invoking any EC math.
+//! BIP-39 mnemonic generation, validation, and PBKDF2 seed derivation
+//! for Sophis, plus the BIP-32 metadata types (`DerivationPath`,
+//! `KeyFingerprint`, `ChildNumber`, `ExtendedKeyAttrs`,
+//! `AddressType`) that downstream crates use for key-path bookkeeping.
 
 mod address_type;
 mod attrs;

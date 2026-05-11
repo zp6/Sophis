@@ -40,7 +40,8 @@ pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
 }
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params.
-/// NOTE: transactions are unsigned (signature_script = []); Schnorr/ECDSA removed.
+/// NOTE: transactions are unsigned (signature_script = []); Dilithium signing
+/// integration is pending.
 pub fn generate_tx_dag(
     mut utxoset: UtxoCollection,
     spk: ScriptPublicKey,
@@ -123,7 +124,7 @@ where
 }
 
 /// Generates an unsigned transaction (signature_script = []).
-/// Schnorr/ECDSA signing removed — Dilithium signing integration pending.
+/// Dilithium signing integration is pending.
 pub fn generate_tx(utxos: &[(TransactionOutpoint, UtxoEntry)], amount: u64, num_outputs: u64, address: &Address) -> Transaction {
     let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
     assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));

@@ -642,12 +642,6 @@ mod tests {
         );
     }
 
-    /// Replaced with Dilithium signing — Schnorr (secp256k1) signing removed.
-    #[test]
-    fn test_sign_schnorr_removed() {
-        // Schnorr-based test_sign removed. See crypto/txscript/src/lib.rs for Dilithium signing tests.
-    }
-
     // ----------------------------------------------------------------
     // L1 — sub-fase L1.3.b sanity: check_alt_references must silently
     // accept ALT references when no `alt_store` is wired (test / lite

@@ -43,7 +43,7 @@ async fn daemon_sanity_test() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[ignore = "TODO Sophis: depends on legacy Schnorr signing path; needs Dilithium-aware mining test rewrite"]
+#[ignore = "TODO Sophis: depends on legacy signing path; needs Dilithium-aware mining test rewrite"]
 async fn daemon_mining_test() {
     init_allocator_with_default_settings();
     sophis_core::log::try_init_logger("INFO");
@@ -124,7 +124,7 @@ async fn daemon_mining_test() {
 
 /// `cargo test --release --package sophis-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[ignore = "TODO Sophis: depends on legacy Schnorr signing path; needs Dilithium-aware UTXO propagation test rewrite"]
+#[ignore = "TODO Sophis: depends on legacy signing path; needs Dilithium-aware UTXO propagation test rewrite"]
 async fn daemon_utxos_propagation_test() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("sophis-testing-integration-heap.json").build();

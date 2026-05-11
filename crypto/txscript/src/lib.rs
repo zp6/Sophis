@@ -205,8 +205,8 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedVa
         match op {
             Ok(op) => {
                 match op.value() {
-                    codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpCheckSigECDSA => num_sigs += 1,
-                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
+                    codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpReserved_ab => num_sigs += 1,
+                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpReserved_a9 => {
                         if i == 0 {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                             continue;
@@ -472,9 +472,10 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
     }
 
-    fn op_check_multisig_schnorr_or_ecdsa(&mut self, _ecdsa: bool) -> Result<(), TxScriptError> {
-        // Schnorr and ECDSA multisig are not supported in Sophis (PQC-only chain).
-        Err(TxScriptError::OpcodeDisabled("Schnorr/ECDSA multisig opcodes are disabled".to_string()))
+    fn op_check_multisig_disabled(&mut self) -> Result<(), TxScriptError> {
+        // Multisig opcodes are disabled in Sophis (PQC-only chain); multisig
+        // patterns should be built at the contract layer using Dilithium.
+        Err(TxScriptError::OpcodeDisabled("multisig opcodes are disabled in Sophis (PQC-only; build multisig via contracts with Dilithium)".to_string()))
     }
 
     // ---------------------------------------------------------------------------
@@ -483,8 +484,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     // Script format (P2SH redeem script):
     //   <sig: 2420 bytes> <pubkey: 1312 bytes> OP_CHECKSIG_DILITHIUM
     //
-    // The sig_hash is computed the same way as Schnorr (Blake2b of the TX),
-    // ensuring Dilithium TXs participate in the same sighash commitment scheme.
+    // The sig_hash is computed as Blake2b of the TX, the same commitment
+    // scheme used by every signature path in Sophis.
     // ---------------------------------------------------------------------------
     fn check_dilithium_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         self.runtime_sig_op_counter.consume_sig_op()?;
@@ -1097,7 +1098,7 @@ mod bitcoind_tests {
     }
 
     #[test]
-    #[ignore = "TODO Sophis: bitcoind script_tests.json expects Schnorr/ECDSA multisig (now disabled per CLAUDE.md). Filter or rebuild test vectors for Dilithium-only opcode set."]
+    #[ignore = "TODO Sophis: bitcoind script_tests.json expects multisig opcodes that are disabled in Sophis. Filter or rebuild test vectors for Dilithium-only opcode set."]
     fn test_bitcoind_tests() {
         // Script test files are split into two versions to test behavior after KIP-10:
         //

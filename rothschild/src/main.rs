@@ -212,7 +212,7 @@ async fn main() {
 
     let address_prefix = Prefix::from(args.network);
 
-    // Dilithium key setup (replaces secp256k1 Keypair)
+    // Dilithium key setup
     let dilithium_key = if let Some(private_key_hex) = args.private_key {
         DilithiumKey::from_seed_hex(&private_key_hex, address_prefix)
     } else {
