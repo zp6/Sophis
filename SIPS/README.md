@@ -28,6 +28,7 @@ licence (AGPL-3.0; see [`LICENSE`](../LICENSE)).
 | [7](./SIP-7-LIGHT-CLIENT.md) | Light Client SPV Protocol | Standards | Draft | 2026-05-10 |
 | [8](./SIP-8-PRUNING-POLICY.md) | Pruning Policy + getPruningInfo RPC | Standards | Draft | 2026-05-11 |
 | [9](./SIP-9-POSEIDON.md) | Canonical Poseidon Specification (spec-only) | Standards | Draft | 2026-05-11 |
+| [10](./SIP-10-MULTICALL.md) | Multicall Pattern (SDK contract template) | Standards | Draft | 2026-05-11 |
 
 (Index will grow as SIPs are submitted and accepted. Maintainers
 update this table when a SIP changes status.)
