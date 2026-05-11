@@ -101,6 +101,7 @@ members = [
     "oracle/sdk",
     "tools/sophis-da-stress",
     "tools/sophis-dashboard",
+    "tools/sophis-calculator",
 ]
 
 [workspace.package]

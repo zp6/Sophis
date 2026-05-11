@@ -1,0 +1,25 @@
+[package]
+name = "sophis-calculator"
+description = "Sophis Energy Offset Calculator — local dev server for tools/sophis-calculator/static"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sophis-calculator"
+path = "src/main.rs"
+
+[dependencies]
+sophis-core.workspace = true
+
+axum = { workspace = true }
+clap = { workspace = true }
+log.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

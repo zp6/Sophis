@@ -6819,6 +6819,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sophis-calculator"
+version = "1.1.0"
+dependencies = [
+ "axum",
+ "clap 4.5.51",
+ "log",
+ "sophis-core",
+ "tokio",
+]
+
+[[package]]
 name = "sophis-cli"
 version = "1.1.0"
 dependencies = [
