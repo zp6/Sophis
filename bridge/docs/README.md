@@ -1,5 +1,19 @@
 ## Stratum Bridge Beta
 
+> ### ⚠️ Local-only use — not a hosted Sophis service
+>
+> This stratum bridge is reference software shipped with the Sophis node for **operators who run their own infrastructure**. It is intended for:
+>
+> - A single miner connecting their own ASICs / CPUs to their own `sophisd`
+> - A small private pool operator running their own bridge instance
+> - Developers testing miner integration locally
+>
+> The Sophis Project does **not host, operate, recommend, or curate** any public stratum endpoint, mining pool, or bridge instance. There is no `stratum.sophis.org`, no "official pool", no hosted endpoint published anywhere. If you find one, it is operated by a third party at their own risk and authority — verify independently before connecting hashrate or funds to it.
+>
+> This posture is part of the project's `OPERATIONAL_BOUNDARIES.md` commitment: the core team operates no mining infrastructure on behalf of users. Anyone is free to deploy this bridge for their own use; the responsibility for that deployment rests with the operator.
+>
+> Open-source licensed (AGPL-3.0). No warranty.
+
 This Stratum Bridge is currently in BETA. Support is available in the Sophis Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
 
 For bug reports or feature request, please open an issue at [`sophisnet/rusty-sophis` issues](https://github.com/sophisnet/rusty-sophis/issues) and prefix your issue title with `[Bridge]`.
