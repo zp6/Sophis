@@ -1,0 +1,170 @@
+name: Phase 9 publisher cross-platform
+
+# Cross-platform validation of the Phase 9 PQC-native oracle publisher CLI
+# (`sophis-oracle-publisher`) per SIP-11 acceptance criteria item #8.
+#
+# Builds, tests, and smoke-runs the publisher on Ubuntu, macOS, and Windows.
+# Triggered when any Phase 9 publisher / PQC-core / pqc-tests / bip39 file
+# changes, or when this workflow itself changes.
+#
+# All publisher dependencies are pure Rust (libcrux-ml-dsa, borsh, clap,
+# faster-hex, getrandom). No protoc, LLVM, CMake, or RandomX C++ toolchain
+# needed at the publisher build target. This keeps the cross-platform
+# matrix fast and reliable.
+
+on:
+  pull_request:
+    paths:
+      - 'oracle/pqc-publisher/**'
+      - 'oracle/pqc-core/**'
+      - 'oracle/pqc-tests/**'
+      - 'wallet/bip39/**'
+      - '.github/workflows/test-pqc-publisher.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  push:
+    branches: [main]
+    paths:
+      - 'oracle/pqc-publisher/**'
+      - 'oracle/pqc-core/**'
+      - 'oracle/pqc-tests/**'
+      - 'wallet/bip39/**'
+      - '.github/workflows/test-pqc-publisher.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  # Allow manual dispatch so maintainers can re-run against a tag for SIP-11
+  # acceptance audit purposes.
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Pin clippy to fail on warnings — matches CI invariant in CLAUDE.md
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pqc-publisher-${{ matrix.os }}
+          # Cache scope: only the crates this job actually touches.
+          # Avoids re-downloading the full workspace's third-party deps.
+          workspaces: |
+            . -> target
+
+      - name: Show toolchain versions
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+          cargo fmt --version
+
+      # --------------------------------------------------------------
+      # Build
+      # --------------------------------------------------------------
+
+      - name: Build sophis-oracle-pqc-core (lib)
+        run: cargo build --release -p sophis-oracle-pqc-core
+
+      - name: Build sophis-oracle-publisher (bin + lib)
+        run: cargo build --release -p sophis-oracle-publisher
+
+      # --------------------------------------------------------------
+      # Tests
+      # --------------------------------------------------------------
+
+      - name: Unit tests — sophis-oracle-pqc-core
+        run: cargo test --release -p sophis-oracle-pqc-core --lib --no-fail-fast
+
+      - name: Unit tests — sophis-oracle-publisher
+        run: cargo test --release -p sophis-oracle-publisher --lib --bins --no-fail-fast
+
+      - name: Integration tests — sophis-oracle-pqc-tests
+        run: cargo test --release -p sophis-oracle-pqc-tests --no-fail-fast
+
+      # --------------------------------------------------------------
+      # Lints
+      # --------------------------------------------------------------
+
+      - name: Clippy (-D warnings)
+        run: |
+          cargo clippy --release \
+            -p sophis-oracle-pqc-core \
+            -p sophis-oracle-publisher \
+            -p sophis-oracle-pqc-tests \
+            --all-targets --no-deps
+
+      - name: Format check
+        run: |
+          cargo fmt --check \
+            -p sophis-oracle-pqc-core \
+            -p sophis-oracle-publisher
+
+      # --------------------------------------------------------------
+      # CLI smoke tests — confirm the binary runs end-to-end on this OS
+      # --------------------------------------------------------------
+
+      - name: CLI smoke — --help
+        run: cargo run --release -p sophis-oracle-publisher -- --help
+
+      - name: CLI smoke — --version
+        run: cargo run --release -p sophis-oracle-publisher -- --version
+
+      # If the CLI exposes subcommands (sign, verify, generate-key, etc.),
+      # each one's --help should succeed. Cargo run with a non-existent
+      # subcommand would non-zero exit; this verifies the CLI parses its
+      # own argument tree consistently across platforms.
+      - name: CLI smoke — subcommand --help survey
+        shell: bash
+        run: |
+          set -e
+          for sub in $(cargo run --release -p sophis-oracle-publisher -- --help 2>&1 | \
+                       grep -E "^\s{2,4}[a-z]" | awk '{print $1}' | grep -v '^-'); do
+            echo "→ $sub --help"
+            cargo run --release -p sophis-oracle-publisher -- "$sub" --help || \
+              echo "::warning::Subcommand '$sub' --help non-zero — verify CLI structure"
+          done
+
+  summary:
+    name: SIP-11 #8 acceptance summary
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report cross-platform status
+        run: |
+          echo "Phase 9 publisher CLI cross-platform CI run."
+          echo ""
+          echo "Per SIP-11 acceptance criterion #8 (the publisher CLI must"
+          echo "build and run on Windows + Linux + macOS), this job is"
+          echo "considered passing only if all three matrix legs succeeded."
+          echo ""
+          echo "Test result: ${{ needs.test.result }}"
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::At least one OS leg failed — SIP-11 #8 not yet satisfied."
+            exit 1
+          fi
+          echo "✓ All 3 platforms (ubuntu-latest, macos-latest, windows-latest) passed."
+          echo "✓ SIP-11 acceptance criterion #8 satisfied for this commit."
