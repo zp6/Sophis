@@ -6,15 +6,11 @@
 
 **Date:** 2026-05-09
 
-**Replaces:** PSKT (Kaspa-derived, secp256k1-only) — incompatible with Sophis (PQC-only chain).
-
 ---
 
 ## 1. Context and motivation
 
-Sophis is PQC-only at the consensus layer (Dilithium ML-DSA-44, opcode `0xc4`). The PSKT crate inherited from rusty-kaspa carries the structural workflow (Creator → Updater → Signer → Combiner → Finalizer → Extractor) that any non-trivial wallet flow needs — hardware wallet signing, cold storage, multisig coordination, offline signing — but its internal types are bound to `secp256k1::PublicKey` and `Signature::{ECDSA, Schnorr}`, both of which are inert in Sophis (Schnorr opcodes return `OpcodeDisabled`).
-
-PSBS is the Dilithium-aware redesign of the same workflow. **It is not a migration of PSKT** — the wire format is incompatible by construction (Dilithium VK is 1312 B vs secp256k1 PK 33 B; signatures are 2420 B vs 64 B). PSBS uses its own magic bytes so any tool attempting to parse a PSBS container as PSKT (or vice versa) fails loudly rather than mis-parsing.
+Sophis is PQC-only at the consensus layer (Dilithium ML-DSA-44, opcode `0xc4`). PSBS is the Dilithium-aware redesign of the same workflow. PSBS uses its own magic bytes so any tool attempting to parse a PSBS container as PSKT (or vice versa) fails loudly rather than mis-parsing.
 
 This document freezes the design decisions for K1 implementation. It is not yet SIP-1 — the formal SIP follows in sub-phase K1.5 once test vectors and reference implementation are validated.
 
@@ -26,7 +22,6 @@ This document freezes the design decisions for K1 implementation. It is not yet 
 | **D2** | `Xpub` field in `Global` | **Removed** | Same reason as D1. Extended public keys are a hierarchical derivation concept; Sophis has none. Reserving the slot "for future" pollutes the wire format with a field that is structurally meaningless today. If Dilithium hierarchical derivation ever standardizes, PSBS-v2 can reintroduce it cleanly. |
 | **D3** | `PartialSigs` storage | **`Vec<(DilithiumPubKey, Signature)>`** | Map keyed by 1312-byte pubkey is wasteful (every lookup hashes/compares 1.3 KB). A vector preserves deterministic signing order, has trivial linear lookup (multisig N-of-M typically ≤ 7), and serializes naturally. |
 | **D4** | `Signature` enum extensibility | **Versioned: `DilithiumML44(...)` + `Future(...)`** | Dilithium is a parameter family (ML-DSA-44 / -65 / -87). Sophis ships with -44 (smallest), but may promote to -65 in the future for higher security. A 1-byte variant discriminator is cheap insurance against PSBS-v2 hard fork purely to add an algorithm. |
-| **D5** | Wire format magic | **Own magic bytes (`0x70 0x73 0x62 0x73` = ASCII `"psbs"`)** | Reusing PSKT magic would let Kaspa tooling mis-parse PSBS payloads silently. Different magic = explicit fail-loud incompatibility. |
 
 ## 3. Canonical types (Rust)
 
@@ -176,7 +171,7 @@ A 5-of-9 multisig PSBS: **~3.9 KB + 4 more sigs ≈ 18.6 KB**. Still within limi
 
 ## 5. PSBS workflow (roles)
 
-PSBS follows the BIP-174 / Kaspa PSKT role model. Each role consumes a PSBS, performs a transformation, and produces a PSBS that can be passed to the next role. Roles are *capabilities*, not *machines* — one machine may play multiple roles in a single session.
+PSBS follows the BIP-174. Each role consumes a PSBS, performs a transformation, and produces a PSBS that can be passed to the next role. Roles are *capabilities*, not *machines* — one machine may play multiple roles in a single session.
 
 ### 5.1 Creator
 **Input:** transaction outline (intended outputs, UTXOs being spent).
@@ -230,7 +225,7 @@ K1.5 will publish canonical test vectors. The plan:
 
 3. **PSBS round-trip**: every PSBS at every workflow stage must serialize and deserialize identically (borsh round-trip property).
 
-4. **Cross-tooling negative test**: parsing a Kaspa PSKT (different magic) MUST fail with `InvalidMagic`. Parsing a v1 PSBS as a hypothetical v2 (different version) MUST fail with `UnsupportedVersion`.
+4. **Cross-tooling negative test**: Parsing a v1 PSBS as a hypothetical v2 (different version) MUST fail with `UnsupportedVersion`.
 
 5. **Adversarial Signer test**: a Signer producing a syntactically valid but cryptographically invalid signature (e.g., random 2420 bytes) MUST be rejected by the Finalizer's signature verification step.
 
@@ -264,7 +259,7 @@ This design corresponds to the K1 sub-phase plan tracked in TaskList:
 - **K1.1** — Replace `secp256k1::PublicKey` and `Signature` enum in `wallet/pskt/src/`.
 - **K1.2** — Remove `bip32_derivations` and `Xpub` fields per D1+D2.
 - **K1.3** — Re-do tests with Dilithium keypairs.
-- **K1.4** — Integrate `dilithium-wallet` CLI subcommands (`pskt create/sign/combine/finalize/extract`).
+- **K1.4** — Integrate `dilithium-wallet` CLI subcommands.
 - **K1.5** — Publish formal SIP-1 with this design + test vectors + reference impl pointer.
 - **K1.6** — Cleanup: remove `secp256k1` dependency from `wallet/pskt/Cargo.toml`.
 
