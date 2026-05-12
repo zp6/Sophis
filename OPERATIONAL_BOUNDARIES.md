@@ -52,7 +52,7 @@ third-party services.
 | **DNS seeders** | Maintained and expanded | Domains TBD; aiming to recruit 2–3 independent operators before mainnet |
 | **`sophis-stratum-bridge`** | Code maintained, no instance operated | README explicit: "local-only use" |
 | **Mining pool** | NOT OPERATED | Sophis Project commits never to run a centralized pool. Community is free to use P2Pool / Stratum V2 / independent third parties |
-| **Bridge / wrapped SPHS / cross-chain** | NOT OPERATED | Decision #4 of the 2026-05-04 pivot. Code extracted to `C:\Projetos\ZKBridge\` (private, BSL 1.1, non-deploy) |
+| **Bridge / wrapped SPHS / cross-chain** | NOT OPERATED |
 | **Exchange / custody / OTC desk** | NOT OPERATED | Anyone wanting to buy SPHS uses third-party venues |
 | **Stablecoin issuance** | NOT OPERATED | Out of scope for Sophis Project |
 
@@ -134,11 +134,6 @@ hard fork that:
 - Establishes an official cross-chain bridge in the protocol layer
 - Creates a foundation / legal entity bound to the project's name
 
-Each item maps to a 2026-05-04 pivot decision (`DECISOES_2026-05-04.md`)
-or a `project_legal_positioning.md` non-negotiable principle. A hard
-fork that violates any of them is, by the team's stated criteria, a
-different chain by name — the Sophis Project does not follow it.
-
 ## 6. Donation flag — opt-in only
 
 The reference miner (`sophis-miner`) ships with an **opt-in
@@ -175,7 +170,6 @@ indemnify them.
 
 ## 8. Reference
 
-- Pivot decisions: `DECISOES_2026-05-04.md` (decisions #4, #5, #6, #7)
 - Disengagement plan: `project_disengagement_strategy.md` (memory)
 - Donation flag spec: `project_miner_donate_flag.md` (memory)
 - Legal posture: `project_legal_positioning.md` (memory)
