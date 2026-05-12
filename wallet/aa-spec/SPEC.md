@@ -55,7 +55,7 @@ The system does **not** target, in v1:
 These eight decisions are the load-bearing structural choices. Each was selected for one of three reasons:
 
 - **3+ chain convergence** — multiple independent chains agreed on this, so it is likely correct
-- **Sophis-specific constraint** — Dilithium sizes, no HD derivation, AGPL position
+- **Sophis-specific constraint** — Dilithium sizes, no HD derivation, Apache 2.0 license posture
 - **Risk control** — minimizes regulatory or operational exposure
 
 Maintainers implementing this spec **may revisit** any decision by opening a SIP, but they should treat each one as the default and justify any deviation explicitly.
@@ -113,9 +113,9 @@ Maintainers implementing this spec **may revisit** any decision by opening a SIP
 
 ### D5 — No factory, no deployer, no curation
 
-**Decision:** The Sophis core team does **not** publish an "official factory contract", does **not** maintain a "verified guardian registry", does **not** operate a paymaster (when v2 ships paymasters), does **not** recommend any specific wallet UI. Reference contracts ship under AGPL-3.0; deployment is per-user.
+**Decision:** The Sophis core team does **not** publish an "official factory contract", does **not** maintain a "verified guardian registry", does **not** operate a paymaster (when v2 ships paymasters), does **not** recommend any specific wallet UI. Reference contracts ship under Apache 2.0; deployment is per-user.
 
-**Rationale:** ERC-4337 EntryPoint operates as a singleton on Ethereum mainnet. Several legal-risk analyses have argued that operating an AA-coordinator contract is closer to "service provider" than "tool publisher". By contrast, AGPL-licensed reference contracts deployed user-by-user mirror the legal posture of Bitcoin Core and have survived 15+ years. See `ANTI_PATTERNS.md` §5.
+**Rationale:** ERC-4337 EntryPoint operates as a singleton on Ethereum mainnet. Several legal-risk analyses have argued that operating an AA-coordinator contract is closer to "service provider" than "tool publisher". By contrast, Apache 2.0-licensed reference contracts deployed user-by-user mirror the legal posture of Bitcoin Core (MIT) and have survived 15+ years under analogous permissive open-source terms. See `ANTI_PATTERNS.md` §5.
 
 **Implication for maintainers:** if any design decision implies "the core team operates X", reject that decision and redesign. Decision 6 of the 2026-05-04 regulatory pivot is the binding constraint.
 
@@ -457,7 +457,7 @@ Some chains have proposed hybrid schemes (ECDSA + Dilithium) for "defense in dep
 
 The following text is quoted from `OPERATIONAL_BOUNDARIES_PARAGRAPH.md` and is to be inserted verbatim into the project's `OPERATIONAL_BOUNDARIES.md` and whitepaper §11 once any reference contract from this spec is published as code (not before).
 
-> Account abstraction reference contracts and SDK are released open-source under AGPL-3.0. The core team does not operate, host, custody, or recover any user account. Guardians for any account are chosen exclusively by the account holder; the project does not curate, verify, or recommend guardian sets. There is no official factory contract, no official paymaster, no official wallet UI. Reference contracts are templates for third-party deployment, identical in legal posture to Bitcoin Core wallet code.
+> Account abstraction reference contracts and SDK are released open-source under Apache 2.0. The core team does not operate, host, custody, or recover any user account. Guardians for any account are chosen exclusively by the account holder; the project does not curate, verify, or recommend guardian sets. There is no official factory contract, no official paymaster, no official wallet UI. Reference contracts are templates for third-party deployment, identical in legal posture to Bitcoin Core wallet code.
 
 The text exists as a separate file rather than being embedded here so that the canonical version travels with the operational documentation, not the spec.
 

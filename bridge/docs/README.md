@@ -12,7 +12,7 @@
 >
 > This posture is part of the project's `OPERATIONAL_BOUNDARIES.md` commitment: the core team operates no mining infrastructure on behalf of users. Anyone is free to deploy this bridge for their own use; the responsibility for that deployment rests with the operator.
 >
-> Open-source licensed (AGPL-3.0). No warranty.
+> Open-source licensed (Apache 2.0). No warranty.
 
 This Stratum Bridge is currently in BETA. Support is available in the Sophis Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
 

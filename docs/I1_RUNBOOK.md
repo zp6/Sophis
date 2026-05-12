@@ -283,7 +283,7 @@ zero:
 The dashboard can be disabled/redeployed at any time without affecting
 the chain. It is observability infrastructure, not consensus
 infrastructure. Operators who want to fork the dashboard for their own
-node fleet can do so under the AGPL.
+node fleet can do so under Apache 2.0.
 
 If `sophisd` exposes future RPC methods relevant to a new metric, the
 dashboard can absorb them additively (per §3.1 stability guarantee).

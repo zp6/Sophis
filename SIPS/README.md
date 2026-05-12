@@ -12,7 +12,7 @@ The SIP process is modeled on Bitcoin BIPs, Ethereum EIPs, and
 Hyperliquid HIPs. SIPs are released into the public domain (CC0)
 so other projects can port Sophis specifications without licensing
 friction; reference implementations remain under the project
-licence (AGPL-3.0; see [`LICENSE`](../LICENSE)).
+licence (Apache 2.0; see [`LICENSE`](../LICENSE) and [`NOTICE`](../NOTICE)).
 
 ---
 
@@ -89,7 +89,7 @@ A SIP is not:
   specific roadmap items by specific dates (see
   [`MAINTAINERS.md`](../MAINTAINERS.md) § 4).
 - A bypass for the contribution flow in
-  [`CONTRIBUTING.md`](../CONTRIBUTING.md). DCO and AGPL-3.0
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md). DCO and Apache 2.0
   apply to SIP PRs as to all other PRs.
 
 ---
@@ -102,4 +102,5 @@ A SIP is not:
 - [`../MAINTAINERS.md`](../MAINTAINERS.md) — current maintainer set
 - [`../MONETARY_POLICY.md`](../MONETARY_POLICY.md) — emission, no devfund
 - [`../OPERATIONAL_BOUNDARIES.md`](../OPERATIONAL_BOUNDARIES.md) — non-custodial posture
-- [`../LICENSE`](../LICENSE) — AGPL-3.0 (reference implementation)
+- [`../LICENSE`](../LICENSE) — Apache 2.0 (reference implementation)
+- [`../NOTICE`](../NOTICE) — Apache 2.0 attributions

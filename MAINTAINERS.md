@@ -91,7 +91,7 @@ non-negotiables.
 - Succession: `SUCCESSION.md`
 - Disengagement plan: `project_disengagement_strategy.md` (memory)
 - DCO / contribution policy: `CONTRIBUTING.md`
-- License: `LICENSE` (AGPL-3.0)
+- License: `LICENSE` (Apache 2.0) and `NOTICE`
 
 ---
 

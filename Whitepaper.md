@@ -614,7 +614,7 @@ Build dependencies on Windows: Rust 1.94+, MSVC 2022 C++ toolchain, LLVM 22+ (`L
 - **Founder Self-Restriction monitoring script.** Public GitHub repo, watches `(balance / total_emitted_supply)`, auto-pauses miner at 4.9 %. Script complete; deployment in continuous operation pending mainnet.
 - **Three canonical documents** for mainnet announcement: Sophis Monetary Policy, Founder Self-Restriction Statement, Operational Boundaries Statement (already merged at the repository root as `MONETARY_POLICY.md`, `FOUNDER_SELF_RESTRICTION.md`, `OPERATIONAL_BOUNDARIES.md`; published with SHA-256-anchored timestamps at announcement).
 - **Bootstrap nodes** in two or more geographies; recruited independent DNS seeder operators.
-- **LICENSE** (AGPL-3.0) and **CONTRIBUTING.md** with DCO requirement at the repo root — both shipped.
+- **LICENSE** (Apache 2.0) with companion **NOTICE** file and **CONTRIBUTING.md** with DCO requirement at the repo root — all shipped.
 - **Donation wallet published** — a single personal donation address, generated on a freshly-keyed wallet distinct from both the mining wallet (§5.3) and the maintainer's day-to-day wallet, published in `README.md` and on the project website together with the canonical disclaimer text from §5.5. No multisig, no project treasury, no governance.
 - **Project site** at `sophis.org` — landing page + faucet + block explorer + the documentation index already inlined in `README.md`.
 - **Testnet hardening** — final stress test under realistic geographic and adversarial conditions, including the 72-hour Phase 6 DA stress run.

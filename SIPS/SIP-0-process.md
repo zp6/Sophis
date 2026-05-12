@@ -373,17 +373,17 @@ slow-change cultural posture (`pending_blockers.md` Roadmap K
 ## 11. Copyright
 
 This document is released into the public domain (CC0). Reference
-implementations remain under the project licence (AGPL-3.0; see
-`LICENSE`). The license split — public domain for the SIP text,
-AGPL for the reference code — mirrors BIP / EIP convention and lets
-other projects port Sophis specifications without licensing
-friction.
+implementations remain under the project licence (Apache 2.0; see
+`LICENSE` and `NOTICE`). The license split — public domain for the
+SIP text, Apache 2.0 for the reference code — mirrors BIP / EIP
+convention and lets other projects port Sophis specifications without
+licensing friction.
 
 ---
 
 ## 12. References
 
-- `CONTRIBUTING.md` — DCO, PR flow, AGPL-3.0
+- `CONTRIBUTING.md` — DCO, PR flow, Apache 2.0
 - `MAINTAINERS.md` — current maintainer set and onboarding
 - `MONETARY_POLICY.md` — emission, no devfund, no on-chain treasury
 - `OPERATIONAL_BOUNDARIES.md` — non-custodial, no entity

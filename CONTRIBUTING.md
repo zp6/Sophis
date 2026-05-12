@@ -87,7 +87,7 @@ Add or update tests for behavior changes. Ensure CI passes before requesting a m
 
 ## Developer Certificate of Origin (DCO)
 
-All contributions to Sophis must be signed off under the [Developer Certificate of Origin v1.1](https://developercertificate.org/). The DCO is a lightweight contributor agreement that asserts you have the right to submit the work under the project's license (AGPL-3.0, see `LICENSE`). It does **not** transfer copyright; you retain ownership of your contributions.
+All contributions to Sophis must be signed off under the [Developer Certificate of Origin v1.1](https://developercertificate.org/). The DCO is a lightweight contributor agreement that asserts you have the right to submit the work under the project's license (Apache 2.0, see `LICENSE` and `NOTICE`). It does **not** transfer copyright; you retain ownership of your contributions.
 
 **To sign off your commits, use `-s` / `--signoff`:**
 

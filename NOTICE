@@ -1,0 +1,59 @@
+Sophis Network ($SPHS)
+Copyright 2026 Sophis Network Contributors
+
+This product includes software developed at Sophis Network and
+released under the Apache License, Version 2.0. See LICENSE.
+
+---
+
+Portions of this codebase derive from the Rusty-Kaspa implementation
+of the GHOSTDAG BlockDAG protocol:
+
+  Rusty-Kaspa
+  Copyright 2023-2025 Kaspa Developers
+  Licensed under ISC
+  Upstream: https://github.com/kaspanet/rusty-kaspa
+
+ISC permits redistribution under alternative terms. The Sophis Network
+project distributes the combined work — upstream Rusty-Kaspa portions
+plus Sophis Network modifications — under the Apache License, Version
+2.0 (see LICENSE).
+
+The Sophis Network modifications include, but are not limited to:
+
+  - Post-quantum signature scheme (CRYSTALS-Dilithium ML-DSA-44) as the
+    only signature primitive at protocol level.
+  - RandomX as the proof-of-work algorithm.
+  - sVM — sandboxed WASM virtual machine for smart contracts.
+  - L1 native token primitives with linear-typed Resource<T> accounting.
+  - Phase 3 ZK-Rollup (STARKs + Risc0).
+  - Phase 6 self-hosted data availability layer.
+  - Phase 9 PQC-native oracle.
+  - Address bech32 prefixes (`sophis:`, `sophistest:`, `sophisdev:`,
+    `sophissim:`) and the corresponding consensus invariants.
+  - Monetary policy (210M SPHS hard cap, smooth long-tailed emission
+    curve, no on-chain devfund, no premine).
+  - The Operational Boundaries posture (non-custodial reference team,
+    no bridge, no privacy primitives in core).
+
+These modifications are Sophis Network original work and are
+distributed under Apache 2.0 as part of the combined Work.
+
+---
+
+Third-party dependencies are listed in each Cargo.toml file and remain
+under their respective upstream licenses. This NOTICE does not
+re-license them.
+
+---
+
+Community-template repositories that accompany Sophis but live in
+separate repositories under independent governance are NOT under
+Apache 2.0; they are released under CC0 1.0 Universal:
+
+  - sophis-network/green-miner-pledge
+  - sophis-network/community-labels
+  - sophis-network/donation-dashboard
+
+Each of those repositories carries its own LICENSE file with the CC0
+text and is not affected by the Apache 2.0 license of this codebase.

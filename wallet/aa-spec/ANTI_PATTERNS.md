@@ -75,7 +75,7 @@ If there is ever pressure to add OAuth-style onboarding to Sophis, the response 
 
 **What:** A core-team-deployed sVM contract that creates and registers `IAccount` instances for users, optionally maintaining a directory of "verified" accounts.
 
-**Why it is rejected:** This pattern concentrates legal-risk profile from "publishing reference code" (clear non-operation) to "operating account-creation infrastructure" (potentially classifiable as service provision). The Sophis core team operates under the deliberate posture documented in `OPERATIONAL_BOUNDARIES.md` and `project_no_entity_decision.md`: ship reference contracts under AGPL-3.0, deploy by users.
+**Why it is rejected:** This pattern concentrates legal-risk profile from "publishing reference code" (clear non-operation) to "operating account-creation infrastructure" (potentially classifiable as service provision). The Sophis core team operates under the deliberate posture documented in `OPERATIONAL_BOUNDARIES.md` and `project_no_entity_decision.md`: ship reference contracts under Apache 2.0, deploy by users.
 
 A factory contract operated by the core team would also create a directory of accounts (whatever accounts the factory created), which becomes a curation surface (next anti-pattern, §5).
 

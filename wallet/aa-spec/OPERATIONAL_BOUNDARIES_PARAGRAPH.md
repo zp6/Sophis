@@ -14,7 +14,7 @@ To be inserted into the project's `OPERATIONAL_BOUNDARIES.md` as a new section, 
 
 > ### Account abstraction
 >
-> Account abstraction (AA) reference contracts and SDK helpers are released as open-source under AGPL-3.0. The Sophis core team does not operate, host, custody, or recover any user account. Specifically:
+> Account abstraction (AA) reference contracts and SDK helpers are released as open-source under Apache 2.0. The Sophis core team does not operate, host, custody, or recover any user account. Specifically:
 >
 > - **No account factory.** The core team does not deploy or operate a contract that creates accounts on behalf of users. Account contracts are deployed by the operator of each wallet, using either the reference SDK or a third-party tool of their choice.
 > - **No guardian curation.** Guardians for any account are chosen exclusively by the account holder. The core team does not maintain, recommend, endorse, or verify any list of guardians, individuals, institutions, or services suitable for that role.
@@ -30,7 +30,7 @@ A ser inserido no `OPERATIONAL_BOUNDARIES.md` em português (se houver versão p
 
 > ### Abstração de contas
 >
-> Contratos de referência e helpers de SDK para abstração de contas (AA — Account Abstraction) são publicados como open-source sob AGPL-3.0. A equipe core do Sophis não opera, hospeda, custodia ou recupera qualquer conta de usuário. Especificamente:
+> Contratos de referência e helpers de SDK para abstração de contas (AA — Account Abstraction) são publicados como open-source sob Apache 2.0. A equipe core do Sophis não opera, hospeda, custodia ou recupera qualquer conta de usuário. Especificamente:
 >
 > - **Sem fábrica de contas.** A equipe core não deploya nem opera contrato que crie contas em nome de usuários. Contratos de conta são deployados pelo operador de cada wallet, usando o SDK de referência ou ferramenta de terceiros à escolha.
 > - **Sem curadoria de guardiões.** Os guardiões de qualquer conta são escolhidos exclusivamente pelo titular da conta. A equipe core não mantém, recomenda, endossa ou verifica qualquer lista de guardiões — pessoas, instituições ou serviços — adequados para esse papel.

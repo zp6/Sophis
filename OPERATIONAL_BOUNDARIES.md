@@ -15,7 +15,7 @@ to `MONETARY_POLICY.md` (what SPHS is) and `FOUNDER_SELF_RESTRICTION.md`
 ## 1. Canonical positioning
 
 > Sophis is a permissionless utility blockchain protocol distributed
-> under AGPL-3.0. There is no ICO, no foundation, no founder premine,
+> under Apache 2.0. There is no ICO, no foundation, no founder premine,
 > and no custodial component. The reference implementation is
 > open-source software. Use of the protocol is the responsibility of
 > operators.
@@ -127,8 +127,8 @@ hard fork that:
 - Reintroduces a developer fund / coinbase split / treasury
 - Backdates a premine to any party (including the founder)
 - Reduces the total supply cap of 210,000,000 SPHS
-- Removes the AGPL-3.0 license or relicenses to a more permissive
-  license
+- Removes the Apache 2.0 license or relicenses to source-available
+  or proprietary terms
 - Introduces native privacy primitives (FHE, on-chain mixers, ring
   signatures, blinded zk-SNARKs)
 - Establishes an official cross-chain bridge in the protocol layer
@@ -158,8 +158,9 @@ action, the Sophis Project's defense rests on:
 
 - This statement, hashed and pre-published before mainnet
 - The absence of promotion or endorsement of the third party
-- The AGPL-3.0 license, which makes the software a tool with no
-  reserved rights to the publisher
+- The Apache 2.0 license, which makes the software a tool with no
+  reserved rights to the publisher and includes an explicit
+  patent-retaliation clause
 - The precedent set by the Bitcoin Core / Monero Project lines of
   cases — 15 years, zero criminal prosecutions of upstream protocol
   developers (see `project_legal_positioning.md`)

@@ -110,8 +110,8 @@ members = [
 rust-version = "1.88.0"
 version = "1.1.0"
 authors = ["Sophis developers"]
-license = "ISC"
-repository = "https://github.com/sophisnet/rusty-sophis"
+license = "Apache-2.0"
+repository = "https://github.com/sophis-network/Sophis"
 edition = "2024"
 include = [
     "src/**/*.rs",

@@ -9,7 +9,7 @@ include.workspace = true
 repository.workspace = true
 # wasm-pack requires this value to be a string
 # (it can not be derived from the workspace)
-license = "ISC"
+license = "Apache-2.0"
 
 [lib]
 crate-type = ["cdylib"]
