@@ -12,7 +12,7 @@ use sophis_oracle_pqc_contract::{
 use sophis_oracle_pqc_core::{
     DILITHIUM_PUBKEY_SIZE, DILITHIUM_SIGNING_KEY_SIZE, FeedSource, FeedSourceRegistry, FlipDecision, FlipInputs, FlipPolicy,
     InMemoryFeedSourceRegistry, KEY_GENERATION_RANDOMNESS_SIZE, PriceAttestation, PriceSample, SIGNING_RANDOMNESS_SIZE, StayReason,
-    asset_id_from_symbol, evaluate_flip, generate_keypair, sign_attestation,
+    asset_id_from_symbol, evaluate_flip, generate_keypair,
 };
 use sophis_oracle_publisher::{
     build_and_sign_attestation, decode_attestation_hex, derive_keypair_from_mnemonic, encode_attestation_hex, verify_attestation_at,
