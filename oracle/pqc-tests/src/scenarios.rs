@@ -42,6 +42,11 @@ fn keypair_from_mnemonic(mnemonic: &str) -> ([u8; DILITHIUM_PUBKEY_SIZE], [u8; D
     derive_keypair_from_mnemonic(mnemonic).expect("fixture mnemonic must derive cleanly")
 }
 
+// Direct variant carries a full Dilithium keypair (~3872 bytes); Mnemonic
+// is a small &str. clippy::large_enum_variant flags the size delta, but
+// this enum lives only in test fixtures where the size doesn't matter
+// and boxing would just add Box::new at every call site.
+#[allow(clippy::large_enum_variant)]
 enum KeySource<'a> {
     Mnemonic(&'a str),
     Direct(([u8; DILITHIUM_PUBKEY_SIZE], [u8; DILITHIUM_SIGNING_KEY_SIZE])),
