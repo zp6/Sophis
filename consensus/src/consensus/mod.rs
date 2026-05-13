@@ -1523,11 +1523,15 @@ impl ConsensusApi for Consensus {
         use sophis_consensus_core::events::{EventLog, event_log_matches};
 
         // Resolve block-hash bounds to DAA-score bounds via the headers
-        // store. Missing headers fall back to 0 / u64::MAX so a reorg or
-        // pruning of one bound only widens the range, never narrows it
-        // wrongly.
+        // store. A missing `from_block` widens to 0; a missing `to_block`
+        // clamps to the current virtual DAA score — using `u64::MAX` here
+        // would make `pointers_by_topic_range` / `pointers_by_contract_range`
+        // iterate `u64::MAX / EVENTS_BY_CONTRACT_BUCKET_SIZE ≈ 2.8e14`
+        // empty RocksDB lookups on a topic-only / contract-only query
+        // (the gRPC sanity_test hit a 500s timeout this way before).
+        let current_daa = self.lkg_virtual_state.load().daa_score;
         let from_daa = filter.from_block.and_then(|h| self.storage.headers_store.get_daa_score(h).ok()).unwrap_or(0);
-        let to_daa = filter.to_block.and_then(|h| self.storage.headers_store.get_daa_score(h).ok()).unwrap_or(u64::MAX);
+        let to_daa = filter.to_block.and_then(|h| self.storage.headers_store.get_daa_score(h).ok()).unwrap_or(current_daa);
 
         // Pick the most-selective index per design §7.3:
         //   topic[any non-None] > contract_id > single-block lookup > empty
