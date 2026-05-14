@@ -1947,3 +1947,118 @@ async fn validate_pruning_proof_rejects_truncated_proof() {
     producer.shutdown(producer_handles);
     validator.shutdown(validator_handles);
 }
+
+// ----------------------------------------------------------------------
+// Pre-testnet audit F-7: pruning_proof/apply.rs coverage
+// ----------------------------------------------------------------------
+//
+// `consensus/src/processes/pruning_proof/apply.rs::apply_proof` is the
+// follow-up to validate_pruning_proof: once a proof has been verified,
+// it is committed to local state. This integration test mirrors the F-6
+// round-trip, then additionally calls `apply_pruning_proof` and asserts
+// it succeeds end-to-end.
+//
+// trusted_set assembly: build a `TrustedBlock` (block + ghostdag) for
+// each entry in the producer's pruning-point anticone by re-fetching
+// the block body and matching it to the ghostdag entry returned in
+// `PruningPointTrustedData`.
+
+/// **F-7 positive vector** — apply a validated proof and assert it
+/// commits without error. Sister to F-6.
+///
+/// `#[ignore]`d 2026-05-14: production IBD calls `apply_pruning_proof`
+/// on a `StagingConsensus` (see `protocol/flows/src/ibd/flow.rs:160`,
+/// `new_staging_consensus()` → `apply_pruning_proof` at flow.rs:469).
+/// A staging consensus has a pristine DB — no genesis pre-seeded —
+/// which is required because `apply.rs:172` does
+/// `self.headers_store.insert(header.hash, header.clone(), block_level).unwrap()`
+/// for every header in the proof. The proof includes the genesis
+/// header at the lowest BlockLevel, so when called against a regular
+/// `TestConsensus` (which seeds genesis at construction time), the
+/// re-insert fails with `HashAlreadyExists(genesis_hash)` and the
+/// `.unwrap()` panics. See F-18.
+///
+/// **TODO (post-testnet)** — rewrite this test using the full
+/// `ConsensusFactory` + `ConsensusManager` + `new_staging_consensus()`
+/// pattern from `staging_consensus_test` (line 1097 in this file) so
+/// the `apply_pruning_proof` call runs against a pristine DB. The
+/// proof-and-trusted_set assembly code below is reusable as-is.
+#[tokio::test]
+#[ignore]
+async fn apply_pruning_proof_accepts_validated_proof() {
+    init_allocator_with_default_settings();
+
+    // Producer build + 200-block DAG + wait for pruning. (Same recipe.)
+    let producer_cfg = pruning_proof_test_config();
+    let producer = TestConsensus::new(&producer_cfg);
+    let producer_handles = producer.init();
+
+    let mut selected_chain = vec![producer_cfg.genesis.hash];
+    let second_block: Hash = 2.into();
+    producer.add_empty_utxo_valid_block_with_parents(1.into(), vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(1.into());
+    producer.add_empty_utxo_valid_block_with_parents(second_block, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(second_block);
+    for i in 3..(producer_cfg.pruning_depth() + producer_cfg.finality_depth() + 100) {
+        let hash: Hash = i.into();
+        producer.add_empty_utxo_valid_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+    }
+
+    let start = Instant::now();
+    while producer.get_block_status(second_block).unwrap() == BlockStatus::StatusUTXOValid {
+        if start.elapsed() > Duration::from_secs(20) {
+            panic!("F-7: timed out waiting 20s for pruning to occur on the producer");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let proof = producer.get_pruning_point_proof();
+    let tip_hash = *selected_chain.last().unwrap();
+    let tip_header = producer.get_header(tip_hash).expect("F-7: tip header must be present");
+    let metadata =
+        sophis_consensus_core::pruning::PruningProofMetadata::new(tip_header.blue_work);
+
+    // Assemble the trusted set from the producer's anticone data.
+    let trusted_data = producer
+        .get_pruning_point_anticone_and_trusted_data()
+        .expect("F-7: producer must yield trusted data");
+    let mut trusted_set: Vec<sophis_consensus_core::trusted::TrustedBlock> = Vec::with_capacity(trusted_data.anticone.len());
+    for &h in trusted_data.anticone.iter() {
+        let block = producer.get_block(h).expect("F-7: block in anticone must be present in producer");
+        // Find the matching ghostdag entry — every anticone block has
+        // one in `ghostdag_blocks`.
+        let ghostdag = trusted_data
+            .ghostdag_blocks
+            .iter()
+            .find(|g| g.hash == h)
+            .expect("F-7: ghostdag entry must exist for every anticone block")
+            .ghostdag
+            .clone();
+        trusted_set.push(sophis_consensus_core::trusted::TrustedBlock { block, ghostdag });
+    }
+
+    // Fresh validator. NOTE: do NOT call `.init()` here — that
+    // pre-populates the headers store with genesis, which then collides
+    // with the genesis header re-inserted by `apply_pruning_proof`
+    // (apply.rs:172 unconditionally `unwrap()`s the insert). In
+    // production IBD this scenario is avoided by running apply on a
+    // `StagingConsensus` whose DB is pristine. For unit-test purposes,
+    // skipping `init()` reproduces the pristine-DB precondition.
+    let validator_cfg = pruning_proof_test_config();
+    let validator = TestConsensus::new(&validator_cfg);
+
+    assert!(
+        validator.validate_pruning_proof(proof.as_ref(), &metadata).is_ok(),
+        "F-7: precondition — validator must accept the proof before apply",
+    );
+
+    // The actual F-7 assertion: apply_pruning_proof must succeed.
+    let apply_result = validator.apply_pruning_proof(proof.as_ref().clone(), &trusted_set);
+    assert!(
+        apply_result.is_ok(),
+        "F-7: apply_pruning_proof must commit the validated proof; got {apply_result:?}"
+    );
+
+    producer.shutdown(producer_handles);
+}

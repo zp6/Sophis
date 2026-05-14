@@ -468,17 +468,40 @@ Steps 2-3 are an integration-test scale of work. Existing helpers exist (`TestCo
 
 A scaffold `#[ignore]`d test has not been added to the codebase to avoid lying-about-coverage; this finding is the authoritative record. Estimate revised to **4-8 hours / dedicated session**, not the originally stated 2-3h.
 
-#### F-7 — `pruning_proof/apply.rs` has 0% test coverage (P1)
+#### F-7 — `pruning_proof/apply.rs` has 0% test coverage (P1) — ⚠️ PARTIAL FIX
 
 **Severity:** P1 — must fix before mainnet (testnet-tolerable).
 **Found:** Session 2, 2026-05-14.
-**Status:** open, deeper analysis Session 3.
+**Status:** ⚠️ **partial fix in Session 5, 2026-05-14**. Added `apply_pruning_proof_accepts_validated_proof` integration test alongside the F-6 round-trip and truncated tests in `testing/integration/src/consensus_integration_tests.rs`, but **marked `#[ignore]`** with a clear TODO documenting the missing piece (see F-18 below).
 
-**Description.** `consensus/src/processes/pruning_proof/apply.rs` (137 lines, 10 fns) commits a validated pruning proof to local state during IBD. Sister to F-6.
+The proof-and-trusted_set assembly logic is in place and reusable:
+- Producer builds 200-block DAG, waits for pruning.
+- Calls `producer.get_pruning_point_anticone_and_trusted_data()` to get the anticone hashes + their ghostdag.
+- Iterates anticone, calls `producer.get_block(h)` to fetch each block body, finds the matching `TrustedGhostdagData` by hash, assembles `Vec<TrustedBlock>`.
 
-**Session 3 deeper finding.** Same integration-harness constraint as F-6. Once F-6's tiny-pruning-params machinery exists, `apply.rs` becomes testable by the same harness: call `validate_pruning_point_proof` then `apply_proof` on the same proof and assert the resulting state matches expectations.
+The remaining piece — running `apply_pruning_proof` against a pristine `StagingConsensus` instead of a `TestConsensus` — needs the full `ConsensusFactory` + `ConsensusManager` plumbing (see `staging_consensus_test` at line 1097 of the same file for the recipe). Mechanically straightforward, ~50 lines of additional setup; deferred to a focused follow-up commit.
 
-**Recommended action:** bundled with F-6's Session 4 work.
+#### F-18 — `apply_proof` panics via `.unwrap()` on `HashAlreadyExists` when called on a non-pristine DB (P2 — precondition-only)
+
+**Severity:** P2 — precondition documentation gap, not exploitable.
+**Found:** Session 5, 2026-05-14, during F-7 test attempt.
+**Status:** open.
+
+**Description.** `consensus/src/processes/pruning_proof/apply.rs:172`:
+```rust
+self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
+```
+
+The `unwrap()` assumes the headers store does not already contain `header.hash`. The proof includes the genesis header at its lowest `BlockLevel` (level 0). In production IBD, `apply_proof` is only called on a `StagingConsensus` whose DB is pristine, so the genesis re-insert silently succeeds. When called on a regular `Consensus` instance (which seeds genesis at construction time), the insert returns `Err(HashAlreadyExists(...))` and the `.unwrap()` panics rather than returning a meaningful error.
+
+**Impact.** Zero on production today — every IBD code path that calls `apply_pruning_proof` goes through `new_staging_consensus()` first (`protocol/flows/src/ibd/flow.rs:160, 469, 500`). The bug is purely a *precondition documentation* gap and a *test surface* friction point — the F-7 integration test cannot exercise the apply path without replicating the staging plumbing.
+
+**Recommended fix (any of, P2 priority):**
+1. **Best (defense-in-depth):** in `apply_proof::populate_reachability_and_headers`, change line 172 to tolerate "already present" by mapping the `HashAlreadyExists` error case to a no-op (the existing local `dag` map already gates against duplicate inserts within one call; the persistent-store collision only happens when the validator already had the header, which is the same logical outcome).
+2. **Acceptable:** at the top of `apply_proof`, assert `self.headers_store.get(genesis_hash).is_err()` (i.e., pristine DB) and return `Err(PruningImportError::ApplyOnNonPristineDb)` with a clear message. Documents the precondition + makes the failure explicit + non-panicking.
+3. **Doc-only:** add a rustdoc on `apply_proof` saying "MUST be called on a StagingConsensus or other pristine DB". Doesn't fix the panic but at least flags it.
+
+(1) is the cleanest. (2) is the most surgical for an audit-driven fix.
 
 #### F-8 — IBD + v7 message handlers have 0% coverage (P1)
 
