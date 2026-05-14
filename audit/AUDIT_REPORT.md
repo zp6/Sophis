@@ -236,22 +236,19 @@ A consumer who builds with `--no-default-features` (e.g., to strip an unrelated 
 
 **Audit note:** the existence of this code path *probably* dates back to the Kaspa fork and was never deleted when RandomX was wired in. This is dead-code-by-config rather than a vulnerability, but mainnet should not ship with two compilable PoW algorithms in one binary's source tree.
 
-#### F-2 — Unsafe WASM ABI cast lacks safecast check (P2)
+#### F-2 — Unsafe WASM ABI cast lacks safecast check (P2) ✅ FIXED (partial)
 
 **Severity:** P2 — dívida pós-mainnet (WASM-only path; not exercised by mainnet node).
 **Found:** Session 1, 2026-05-14.
-**Status:** open, low priority.
+**Status:** ✅ **null-pointer reject added in commit `cd53691` (Session 3, 2026-05-14).** Full type-id check intentionally deferred — wasm-bindgen does not expose `try_from_abi` for arbitrary user types; emulating the type-id check would require reimplementing wasm-bindgen's internal reference-table bookkeeping. The null-pointer guard closes the most likely accidental-use-after-free trigger (caller passes a moved-from or un-initialized JS handle). A SAFETY comment documents the residual contract.
 
-**Description.** `crypto/addresses/src/lib.rs:365` performs `unsafe { Self::Value::ref_from_abi(v) }` followed by a `clone()` of the recovered reference, with an inline `TODO: add checks for safecast`. This is wasm-bindgen plumbing for the WASM `Address` shim — only reached from JS bindings, not from node, miner, or RPC. Still: a malformed `ABI` value from JS could trigger UB.
+**Verification:** `cargo check -p sophis-addresses` exit 0 after fix. Wasm32 builds will exercise the new path; native node/miner/RPC unaffected.
 
-**Recommended fix.** Replace with the `try_from_abi` / `IntoWasmAbi` path that wasm-bindgen exposes, or add the explicit type-id check the TODO calls for. Not a blocker for mainnet (the JS bindings are not in the audit-required code path for the L1), but worth resolving before publishing wasm SDK packages.
-
-#### F-3 — `sVM Capability` enum has 3 variants not enumerated in project CLAUDE.md (documentation drift only — no code finding)
+#### F-3 — `sVM Capability` enum has 3 variants not enumerated in project CLAUDE.md (documentation drift only — no code finding) ✅ FIXED
 
 **Severity:** doc-drift (not a code finding).
 **Found:** Session 1, 2026-05-14.
-
-The `Capability` enum in `svm/core/src/capability.rs` now has **11** variants. CLAUDE.md §"sVM" lists 8: `ReadUtxo, ProduceOutput, VerifyDilithium, ReadBlockHeight, HashSha3, VerifyRisc0Proof, VerifyPlonky3Proof, VerifyDataAvailability`. Missing from the doc: `ResolveAlt` (added in L1 ALT roadmap item #1), `EmitEvent` (J4 Events roadmap item #3), `VrfRandomness` (J3 VRF roadmap item #4). Each is documented in its own SIP. Action: update CLAUDE.md when audit closes.
+**Status:** ✅ **fixed in Session 3, 2026-05-14** — `G:\Meu Drive\Claude\Sophis\CLAUDE.md` updated to list all 11 variants (including `ResolveAlt`, `EmitEvent`, `VrfRandomness`) with their roadmap-item references and the canonical source path `svm/core/src/capability.rs`. The repo `C:\Projetos\sophis\CLAUDE.md` was already correct (line 264).
 
 #### F-4 — `MAX_SCRIPT_PUBLIC_KEY_VERSION` documentation drift (Phase 6 carrier bump) ✅ VERIFIED
 
@@ -268,7 +265,9 @@ The `Capability` enum in `svm/core/src/capability.rs` now has **11** variants. C
 1. The numeric value is **5**, not 2 (bumped in Phase 6 sub-fase 6.1, with v=3,4 reserved for legacy rollup-bridge versions per project memory `project_phase6_subfase_6_1_v5_carrier.md`).
 2. The "puro — sem versions de bridge externa" comment dates back to before Phase 6's V5 DA carrier landed and is no longer accurate.
 
-**Recommended fix** (at audit closure): update the `§"Parâmetros da rede"` table in `C:\Projetos\sophis\CLAUDE.md` to `| MAX_SCRIPT_PUBLIC_KEY_VERSION (consensus) | 5 (v=0 native scripts, v=3,4 reserved legacy rollup bridge, v=5 Phase 6 DA carrier) |` and add a note that the txscript-engine constant is separately pinned at 0.
+**Recommended fix** (at audit closure): update the `§"Parâmetros da rede"` table in CLAUDE.md.
+
+**Status:** ✅ **fixed in Session 3, 2026-05-14** — `G:\Meu Drive\Claude\Sophis\CLAUDE.md` line 125 updated with the corrected value (`5`), v=1..5 semantics, and a footnote clarifying that the txscript engine pins its own `MAX_SCRIPT_PUBLIC_KEY_VERSION = 0` intentionally. The repo `C:\Projetos\sophis\CLAUDE.md` does not contain the stale line.
 
 ---
 
@@ -448,15 +447,18 @@ Steps 2-3 are an integration-test scale of work. Existing helpers exist (`TestCo
 
 **Recommended action (out of scope for Session 3):**
 
-1. **Session 4 (dedicated)** — add a `pruning_test_params()` to `consensus/core/src/config/params.rs` with `finality_depth ≈ 16`, `pruning_depth ≈ 32`, gated by `#[cfg(test)]` or a `test-params` feature, so a unit-test-scale DAG can produce a real pruning proof.
-2. Add `consensus/src/processes/pruning_proof/tests.rs` with:
-   - `test_validate_pruning_proof_round_trip` — happy path: build a proof on a tiny DAG, validate it, assert OK.
-   - `test_validate_pruning_proof_rejects_*` for each `PruningImportError` variant.
+1. **Session 4 (dedicated)** — research the minimum DAG depth that produces a coherent pruning proof. **Session 3 follow-up:** `pruning_depth` is computed as `finality_depth + 2·merge_depth + 4·mergeset_size_limit·k + 2k + 2` (`consensus/core/src/config/bps.rs:96-107`). With the structural floors enforced by `Bps<BPS>` (`mergeset_size_limit ≥ 180`, `ghostdag_k ≥ 18` for BPS=1), the minimum coherent `pruning_depth` is approximately **13,094 blocks** even on BPS=1 — *not* the "≈ 32" originally floated. A useful integration test therefore needs either:
+   - A multi-thousand-block synthetic DAG (slow but viable), or
+   - Constants overrides at the workspace level (touching `bps.rs` floors, which has cross-cutting impact and would itself need a regression suite).
+
+2. Once a tractable harness exists, add `consensus/src/processes/pruning_proof/tests.rs` with:
+   - `test_validate_pruning_proof_round_trip` — happy path: build a proof on the synthetic DAG, validate it, assert OK.
+   - `test_validate_pruning_proof_rejects_*` for each `PruningImportError` variant (31 variants → at least cover the 2 `ProofWeakness` variants first).
 3. Coverage should reach ≥80% on `validate.rs` after.
 
-**Pre-mainnet:** P1 gate. **Pre-testnet:** documented gap; testnet will exercise the path under real IBD, which is itself a useful (if non-deterministic) test.
+**Pre-mainnet:** P1 gate. **Pre-testnet:** documented gap; testnet will exercise the path under real IBD with hundreds of joining nodes, which is itself a useful (if non-deterministic) test.
 
-A scaffold `#[ignore]`d test has not been added to the codebase to avoid lying-about-coverage; this finding is the authoritative record.
+A scaffold `#[ignore]`d test has not been added to the codebase to avoid lying-about-coverage; this finding is the authoritative record. Estimate revised to **4-8 hours / dedicated session**, not the originally stated 2-3h.
 
 #### F-7 — `pruning_proof/apply.rs` has 0% test coverage (P1)
 
