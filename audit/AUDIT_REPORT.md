@@ -777,11 +777,11 @@ All three tests **do exist** (manually verified: `processes::transaction_validat
 
 **Fix.** Prepended `processes::transaction_validator::` to the three filter strings. Re-run: **all 13 threats green in 164.3 s**.
 
-#### F-15 — Math fuzz targets don't compile (P1)
+#### F-15 — Math fuzz targets don't compile (P1) — ⚠️ PARTIAL FIX
 
 **Severity:** P1 — pre-mainnet (fuzz coverage missing on BlueWork / chain-work arithmetic).
 **Found:** Session 5, 2026-05-14, during `docker build -f docker/Dockerfile.fuzz`.
-**Status:** open.
+**Status:** ⚠️ **partial fix in this session (compile unblock); see F-17 for follow-up**. `math/fuzz/Cargo.toml` was extended with the 11 transitive deps that `construct_uint!` requires (wasm-bindgen, js-sys, serde, serde-wasm-bindgen, borsh, faster-hex, malachite-base, malachite-nz, thiserror, workflow-*, sophis-utils). After the fix the fuzz targets compile and **actually run** — surfacing F-17 below. The proper long-term fix (refactor `construct_uint!` to feature-gate the WASM surface) is recorded as out of scope.
 
 **Description.** `math/fuzz/fuzz_targets/{u128,u192,u256}.rs` each invoke `construct_uint!(UintN, N)` from `sophis-math::uint`. The macro expands to include `#[wasm_bindgen]` annotations and `js_sys::*` references for the WASM target surface. The main `sophis-math` crate has `wasm_bindgen` and `js_sys` as dependencies, but the `math/fuzz` crate's `Cargo.toml` does NOT. Compilation fails:
 
@@ -824,13 +824,55 @@ The CURRENT rothschild binary's auto-keygen produces the correct Dilithium-forma
 
 **Recommendation:** delete the stale `devnet/rothschild_wallet.json` and let the throughput test regenerate it; also fix `devnet/throughput_test.py`'s output parser to match the current rothschild output line shape (`[INFO ] Generated seed <hex> and address <addr>`). Audit-machine-only; not a code finding.
 
+#### F-17 — Math fuzz harnesses panic on overflow inputs (P1 — fuzz validity)
+
+**Severity:** P1 — pre-mainnet (fuzz harness needs fixing before it can actually validate the math lib).
+**Found:** Session 5, 2026-05-14, immediately after F-15 partial fix unblocked compilation.
+**Status:** open.
+
+**Description.** With F-15's compile-time deps in place, all three math fuzz targets (`u128`, `u192`, `u256`) **compile and execute**. libFuzzer then surfaces crashes on the first input it generates for each target (exit status 77 = crash detected). Each crash produces a deterministic failing test case saved under `artifacts/<target>/crash-*`.
+
+Investigating the harness code (`math/fuzz/fuzz_targets/u128.rs`), the crashes are almost certainly **false positives caused by the harness itself**, not bugs in the production math lib:
+
+```rust
+// u128 fuzz target, line 74:
+let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
+assert_eq!(lib + word, native + (word as u128), "native: {native}, word: {word}");
+```
+
+`native + (word as u128)` will panic in debug mode when the addition overflows u128. The library's `Uint128 + word` likely uses `wrapping_add` semantics (the macro `construct_uint!` emits `Add` impls that use `overflowing_add` internally). When fuzz selects an overflowing combination, native panics → libFuzzer reports a crash → assert_eq never fires.
+
+Same overflow concern applies to `Mul::mul` (line 80), `Shl::shl` (line 86 — `native << lshift` panics on `lshift >= 128`), and the `naive_mod_inv` helper (lines 154-172) which uses checked `try_into().unwrap()` on values that may exceed `i128::MAX`.
+
+**Impact.** The fuzz harness has never validated the math library because:
+1. Pre-F-15 fix: harness didn't compile at all.
+2. Post-F-15 fix: harness compiles but crashes immediately on overflow, never reaching the actual library assertions.
+
+The production math library itself is well-tested by the workspace test suite (1,928 unit + integration tests pass on both Tier 1 Windows and Tier 2 Linux Docker, including extensive `math/src/uint.rs` tests). The fuzz coverage on top of that has effectively been zero.
+
+**Recommended fix.** Rewrite each harness assertion to skip overflow inputs OR to compare wrapping-arithmetic on both sides:
+```rust
+// Before:
+assert_eq!(lib + word, native + (word as u128), ...);
+// After (skip overflow):
+if let Some(native_sum) = native.checked_add(word as u128) {
+    assert_eq!(lib + word, native_sum, ...);
+}
+// OR (compare wrapping):
+assert_eq!(lib + word, native.wrapping_add(word as u128), ...);
+```
+
+Choose the variant that matches the library's actual semantics. Same pattern for Mul, Shl, mod_inv helper.
+
+**Why P1 not P0:** the production math library is exercised by 34 unit tests in `math/src/uint.rs` and indirectly by every BlueWork comparison in consensus. The fuzz coverage gap is a *defense-in-depth* gap, not an exploit vector. The library's correctness is currently established by the unit-test suite + Kani proofs on Gas saturating arithmetic (which uses the same construct_uint primitives).
+
 ### 3.15 Pipeline runs completed in Session 5
 
 | Run | Tool | Result | Duration |
 |---|---|---|---|
 | Phase 6 adversarial (post-F-14 fix) | `python devnet/test_phase6_da_attacks.py` | ✅ **13/13 threats PASS** | 164.3 s |
 | Kani formal proofs (Linux Docker) | `docker run sophis-kani-proofs` | ✅ **19/19 harnesses VERIFIED** | one-shot |
-| Math fuzz (Linux Docker, all 3 targets) | `docker run sophis-fuzz` | ❌ **compile error — F-15** | failed at build |
+| Math fuzz (Linux Docker, all 3 targets) | `docker run sophis-fuzz` | ⚠️ **compiles after F-15 partial fix; 3 crashes — F-17** | ~3 min |
 | F-13 runtime smoke (Windows) | `dilithium-wallet keygen --network mainnet` | ✅ exit 2, no file | < 1 s |
 | F-13 runtime smoke (Windows) | `dilithium-wallet keygen --network testnet` | ✅ exit 0, file + warning | < 1 s |
 | Throughput test (Windows) | `python devnet/throughput_test.py run --tps N` | ⏳ deferred — coordination gap (F-16) | — |
