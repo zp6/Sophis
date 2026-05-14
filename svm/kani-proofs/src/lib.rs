@@ -32,15 +32,24 @@ mod proofs {
     }
 
     // Capability has no Arbitrary impl; build one from a symbolic byte.
+    // Must enumerate ALL Capability variants (currently 11) so the uniqueness
+    // proofs below exhaust the alternation space — a missing variant would
+    // produce a false "uniqueness verified" claim. Last updated 2026-05-14 to
+    // add ResolveAlt (L1 ALT roadmap #1), EmitEvent (J4 #3),
+    // VrfRandomness (J3 #4), VerifyDataAvailability (Phase 6).
     fn any_capability() -> Capability {
-        match kani::any::<u8>() % 7 {
+        match kani::any::<u8>() % 11 {
             0 => Capability::ReadUtxo,
             1 => Capability::ProduceOutput,
             2 => Capability::VerifyDilithium,
             3 => Capability::ReadBlockHeight,
             4 => Capability::HashSha3,
             5 => Capability::VerifyRisc0Proof,
-            _ => Capability::VerifyPlonky3Proof,
+            6 => Capability::VerifyPlonky3Proof,
+            7 => Capability::VerifyDataAvailability,
+            8 => Capability::ResolveAlt,
+            9 => Capability::EmitEvent,
+            _ => Capability::VrfRandomness,
         }
     }
 
