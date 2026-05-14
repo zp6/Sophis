@@ -641,9 +641,58 @@ Each individual disconnect is correct, but the aggregate behavior is "infinite r
 
 This is a Bitcoin Core-style policy; the Kaspa upstream may have had a partial implementation that the Sophis fork preserved but did not finish wiring.
 
-### 3.7 `dilithium-wallet` + `wallet/{bip39,pskt,descriptors,filters,spv}` — to audit
+### 3.7 `wallet/bip39` (BIP-39 mnemonic) — Session 3 continuation, 2026-05-14
 
-⏳ pending: wallet CLI binary (1,142 lines main.rs, F-9), BIP-39 mnemonic, PSKT (partially-signed transaction), descriptors (BIP-380-equivalent), compact filters, SPV light client.
+| File | Verdict | Notes |
+|---|---|---|
+| `wallet/bip39/src/mnemonic/seed.rs` | ✅ STRONG | `Seed::SIZE = 64` (BIP-39 spec). Implements `Drop` that calls `zeroize()` — secret material does not linger in freed memory. |
+| `wallet/bip39/src/mnemonic/phrase.rs` | ✅ STRONG | `PBKDF2_ROUNDS = 2048` (BIP-39 standard). PBKDF2 driven by `Hmac<Sha512>` (BIP-39 standard). `Mnemonic::random` calls `rand::rng()` (rand 0.9 ThreadRng, `CryptoRng`-trait enforced, getrandom-seeded). 16-byte / 32-byte entropy supported (12-word / 24-word). |
+
+### 3.8 `dilithium-wallet` (CLI binary, F-9 area) — Session 3 continuation, 2026-05-14
+
+| File | Verdict | Notes |
+|---|---|---|
+| `dilithium-wallet/src/main.rs` derivation + crypto helpers | ✅ STRONG | `derive_dilithium_from_mnemonic` zeroizes the 32-byte randomness slice after use (line 104). Calls `Mnemonic::new` for validation. ML-DSA-44 key generation via `libcrux_ml_dsa::ml_dsa_44::generate_key_pair`. Integer arithmetic everywhere in fee / mass calculations (`saturating_sub`, `div_ceil`). |
+| `dilithium-wallet/src/main.rs::cmd_keygen` + `wallet.save` | ⚠️ **F-13 (P1)** | Generates and writes **plaintext** JSON wallet file containing `signing_key_hex` and `mnemonic` when invoked with `--network mainnet`. The on-screen warning (lines 290-294) tells the user "guarde estas 24 palavras offline" but does **not** warn that the JSON file also embeds the signing key. See F-13. |
+
+#### F-13 — `dilithium-wallet --network mainnet` writes plaintext signing key to disk (P1)
+
+**Severity:** P1 — must fix before mainnet launch.
+**Found:** Session 3 continuation, 2026-05-14.
+**Status:** open.
+
+**Description.** `dilithium-wallet/src/main.rs` is declared at line 1 as "CLI PQC Wallet para Devnet/Testnet Sophis" — devnet/testnet only. But the `--network` CLI argument (line 1088) accepts `["devnet", "testnet", "mainnet"]` with no guard, and `prefix_for("mainnet")` (line 266) returns `Prefix::Mainnet`, fully wiring mainnet support into the CLI.
+
+`cmd_keygen` (line 271) runs `wallet.save(wallet_path)` at line 280, which calls `std::fs::write(path, serde_json::to_string_pretty(self)?)` at line 161 — writes a plaintext JSON with the fields:
+- `signing_key_hex` (2560-byte ML-DSA-44 signing key, hex-encoded, plaintext)
+- `mnemonic` (24-word BIP-39 phrase, plaintext)
+- `verification_key_hex`, `address`, `network`, `version`
+
+There is **no encryption, no passphrase, no file-permission hardening** (umask, chmod 600). The on-screen warning at lines 290-294 advises the user to "Anote offline" — but refers only to the *mnemonic*; it does not warn that the JSON file on disk also contains the raw signing key.
+
+**Risk model.** A user follows the testnet workflow on mainnet:
+1. Cloud-synced home dir (OneDrive / Dropbox / iCloud) silently uploads the JSON to a third-party server.
+2. Antivirus / EDR vendor's telemetry uploader catalogs the file.
+3. The user accidentally `git add .` in their wallet directory.
+4. A second compromised process on the same user account reads the file (Discord, browser extension, npm install postinstall, etc.).
+
+Any of these paths leaks the signing key while the user believes they only need to protect the mnemonic.
+
+The CLAUDE.md `mainnet-mining/WALLET-PROCEDURE.md` already documents the canonical mainnet workflow (air-gapped keygen, mnemonic on paper, JSON destroyed). The CLI accepting `--network mainnet` invites users to bypass that procedure.
+
+**Recommended fix (any of, P1 priority):**
+1. **Reject `--network mainnet` in `cmd_keygen` outright.** Print a message pointing to `mainnet-mining/WALLET-PROCEDURE.md`. Other commands (balance, send) can keep mainnet support if they don't write a wallet file. Strongest mitigation.
+2. **Refuse to write the JSON if `network == "mainnet"`.** Force the user to use stdout-only output + air-gapped paper backup.
+3. **Encrypt the wallet file** with a user-provided passphrase: Argon2id KDF (m=64MB, t=3, p=1) → ChaCha20-Poly1305 AEAD. Acceptable but adds significant code surface.
+4. **At minimum, expand the on-screen warning** to explicitly say *"This JSON file contains your private signing key in plaintext. Do not sync it to cloud, do not commit it, do not leave it on a connected machine for mainnet use."*
+
+**Recommendation:** Combine 1 + 4 — reject mainnet keygen + expand the warning for testnet/devnet to mention the JSON-vs-mnemonic distinction.
+
+### 3.9 `wallet/{pskt,descriptors,filters,spv}` — to audit
+
+⏳ pending: PSKT (partially-signed transaction), descriptors (BIP-380-equivalent), compact filters (BIP-157/158-equivalent K2), SPV light client (J5).
+
+### 3.10 Anti-long-range-attack confirmed Session 1 §1.6 — no further action.
 
 ### 3.8 Anti-long-range-attack confirmed Session 1 §1.6 — no further action.
 
