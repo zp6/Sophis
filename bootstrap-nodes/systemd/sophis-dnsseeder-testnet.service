@@ -1,0 +1,29 @@
+[Unit]
+Description=Sophis DNS Seeder (testnet-10)
+Documentation=https://github.com/sophis-network/Sophis/tree/main/sophis-dnsseeder
+After=network-online.target sophisd-testnet.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sophis
+Group=sophis
+# CAP_NET_BIND_SERVICE lets the unprivileged 'sophis' user bind to UDP/53.
+# Without this, only root could open it, which we'd rather avoid.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/sophis-dnsseeder \
+    --network testnet-10 \
+    --listen-dns 0.0.0.0:53 \
+    --seeds ws://127.0.0.1:47210 \
+    --crawl-interval 1800 \
+    --dns-ttl 30
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

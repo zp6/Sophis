@@ -90,9 +90,71 @@ sudo systemctl restart sophisd-mainnet
 > + discovery alive — that's what you want for a public bootstrap.
 
 This was used at first launch (2026-05-14) to pin node 2 → node 1
-because no DNS seeders were live yet. Once roadmap item #2 (DNS
-seeders) deploys, the `--addpeer` lines can be removed and peer
-discovery becomes automatic.
+because no DNS seeders were live yet. With the DNS seeders now
+deployed (see next section), the `--addpeer` lines can be removed
+on a future restart and peer discovery becomes automatic.
+
+### DNS seeder (sophis-dnsseeder) — deployed 2026-05-14
+
+Each bootstrap host runs a `sophis-dnsseeder` process that:
+1. Crawls the network by connecting to the local sophisd via wRPC
+   Borsh (`ws://127.0.0.1:47210` for testnet, `47110` for mainnet).
+2. Maintains a rolling list of reachable peer IPs (TCP-checked on
+   the P2P port every `--crawl-interval` seconds, default 1800).
+3. Answers DNS A queries on UDP/53 with up to 16 of those IPs.
+
+Cloudflare DNS delegates `testnet-seed.sophis.org` to
+`ns1.sophis.org` + `ns2.sophis.org`, which A-record to the two
+bootstrap IPs. Sophisd nodes consult this name on startup
+(`TESTNET_PARAMS.dns_seeders` in `consensus/core/src/config/params.rs`)
+to discover the initial peer set.
+
+Files (committed to the repo, installed via cloud-init or by hand):
+- `bootstrap-nodes/systemd/sophis-dnsseeder-testnet.service`
+- `bootstrap-nodes/systemd/sophis-dnsseeder-mainnet.service` (kept
+  for when mainnet activates; not enabled now)
+- `bootstrap-nodes/systemd/resolved-no-stub.conf` — drop-in for
+  systemd-resolved that disables its stub listener (which otherwise
+  squats on UDP/53 and blocks the seeder)
+
+#### Verify the seeder is responding
+
+```bash
+# From your workstation (uses the seeder directly, bypassing DNS recursion):
+nslookup -type=A testnet-seed.sophis.org 5.78.211.57
+nslookup -type=A testnet-seed.sophis.org 178.105.175.220
+```
+
+Each should return ≥1 reachable IP. The first 1-2 seconds of
+`DNS request timed out / Server: UnKnown` is cosmetic (`nslookup`
+trying reverse-DNS on the server address, which the seeder doesn't
+implement).
+
+#### View what's currently in the seeder's pool
+
+```bash
+ssh root@<bootstrap-host> "journalctl -u sophis-dnsseeder-testnet -n 5 --no-pager | grep 'Crawl done'"
+```
+
+Each crawl logs `Crawl done: N reachable IPv4 nodes` — N grows as
+the network adds nodes.
+
+#### Common failure: AddrInUse on port 53
+
+Symptom: `journalctl -u sophis-dnsseeder-testnet` shows
+`DNS: failed to bind UDP socket: AddrInUse`.
+
+Cause: `systemd-resolved`'s stub listener is squatting on UDP/53.
+
+Fix (idempotent — already done on the production hosts):
+
+```bash
+sudo mkdir -p /etc/systemd/resolved.conf.d
+sudo cp /var/lib/sophis/src/bootstrap-nodes/systemd/resolved-no-stub.conf \
+    /etc/systemd/resolved.conf.d/no-stub-listener.conf
+sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+sudo systemctl restart systemd-resolved sophis-dnsseeder-testnet
+```
 
 ### Reset a node's data (nuclear — keep the SSH keys, lose the chain)
 

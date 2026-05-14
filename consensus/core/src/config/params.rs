@@ -612,10 +612,13 @@ pub const MAINNET_PARAMS: Params = Params {
 };
 
 pub const TESTNET_PARAMS: Params = Params {
-    // TODO(testnet): add seeder before testnet launch
-    // Format: "seed1-testnet.sophis.network"
-    // Host must run sophis-dnsseeder on port 46211 (testnet-10 P2P port).
-    dns_seeders: &[],
+    // Deployed 2026-05-14. NS delegation in Cloudflare points
+    // testnet-seed.sophis.org at ns1.sophis.org + ns2.sophis.org, which
+    // resolve to the two bootstrap nodes (5.78.211.57 + 178.105.175.220)
+    // running sophis-dnsseeder on UDP/53. Each seeder crawls peers via
+    // wRPC ws://127.0.0.1:47210 and returns reachable IPv4 set on A
+    // queries. See bootstrap-nodes/BOOTSTRAP_RUNBOOK.md.
+    dns_seeders: &["testnet-seed.sophis.org"],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
