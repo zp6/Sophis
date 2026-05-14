@@ -156,6 +156,63 @@ sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
 sudo systemctl restart systemd-resolved sophis-dnsseeder-testnet
 ```
 
+### Faucet HTTPS — certbot + nginx pitfall
+
+The cloud-init prepares `nginx-faucet.sophis.org.conf` with the
+`listen 443 ssl http2`, `ssl_certificate`, and `ssl_certificate_key`
+lines **commented out** — that's intentional, so nginx can come up
+without a cert and the operator can run `certbot --nginx ...` later
+once DNS is in place. The flow expects the operator to then
+**manually uncomment** those lines after certbot writes the cert
+files.
+
+Where this goes wrong: if you run plain `certbot --nginx -d
+faucet.sophis.org --redirect` while the original `listen 443` lines
+are still commented, the nginx plugin sees a vhost that doesn't
+listen on 443 yet and **creates a brand-new parallel server block**
+for `:443 ssl` with a default `return 301 https://$host$request_uri;`
+inside it. Result: a server block whose only job on :443 is to
+redirect HTTPS → HTTPS. Endless loop. `curl -I https://faucet…`
+returns `301 Moved Permanently → Location: https://faucet…`.
+
+Symptom signature:
+- `nginx -T` shows two `server { server_name faucet.sophis.org; … }`
+  blocks: one with a real config but no `listen 443` (commented),
+  another with `listen 443 ssl` + `return 301 https://$host$request_uri`
+- `nginx -t` may warn `conflicting server name "faucet.sophis.org" on 0.0.0.0:80`
+- Browser sees redirect loop
+
+Fix (idempotent):
+
+```bash
+# 1. Back up the broken state for forensics
+sudo cp /etc/nginx/sites-available/faucet.sophis.org /tmp/faucet.broken.conf
+
+# 2. Reset the vhost from the canonical repo copy
+sudo install -m 0644 /var/lib/sophis/src/testnet-faucet/deploy/nginx-faucet.sophis.org.conf \
+    /etc/nginx/sites-available/faucet.sophis.org
+
+# 3. Uncomment the SSL + listen 443 lines (the cert files are already
+#    on disk because certbot did manage to write them on the first run)
+sudo sed -i 's|^\(\s*\)#\s*ssl_certificate|\1ssl_certificate|g;
+             s|^\(\s*\)#\s*listen 443 ssl http2|\1listen 443 ssl http2|g;
+             s|^\(\s*\)#\s*listen \[::\]:443 ssl http2|\1listen [::]:443 ssl http2|g' \
+    /etc/nginx/sites-available/faucet.sophis.org
+
+# 4. Validate + reload
+sudo nginx -t && sudo systemctl reload nginx
+
+# 5. Verify
+curl -I https://faucet.sophis.org/
+# Expected: HTTP/1.1 200 OK + Strict-Transport-Security header (NOT 301).
+```
+
+For future fresh installs the cleaner path is to use
+`certbot certonly --webroot -w /var/www/html -d faucet.sophis.org`
+(which only writes the cert files, never touches the vhost), then
+manually do the sed step above. That avoids the parallel-block trap
+entirely.
+
 ### Reset a node's data (nuclear — keep the SSH keys, lose the chain)
 
 ```bash
