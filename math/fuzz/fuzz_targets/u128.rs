@@ -22,7 +22,21 @@ fn generate_ints_top_bit_cleared(data: &mut &[u8]) -> Option<(Uint128, u128)> {
     Some((Uint128::from_le_bytes(buf), u128::from_le_bytes(buf)))
 }
 
-fn assert_op<T, U>(data: &mut &[u8], op_lib: T, op_native: U, ok_by_zero: bool) -> Option<()>
+// Audit/F-17 (2026-05-14): the lib's `Add`, `Mul`, `Shl`, `Shr` impls use
+// `debug_assert!(!carry, ...)` on overflow. cargo-fuzz builds with
+// `-Cdebug-assertions` so those assertions DO fire — meaning `lib + lib2`
+// panics on overflow just like native `u128 + u128` does. The pre-F-17
+// fuzz target asserted `op_lib(lib, lib2) == op_native(native, native2)`
+// where BOTH sides panicked on overflow before `assert_eq` could run, so
+// libFuzzer reported "crash" without ever exercising the divergence we
+// actually want to detect.
+//
+// Fix: compare wrapping semantics on both sides. `op_lib_wrapping` returns
+// the wrapping result via the lib's `overflowing_*().0` path (no panic);
+// `op_native_wrapping` uses the native `wrapping_*` family on u128.
+// If the lib's wrapping behavior diverges from native, assert_eq fires
+// and libFuzzer reports a *real* bug.
+fn assert_arith<T, U>(data: &mut &[u8], op_lib_wrapping: T, op_native_wrapping: U, ok_by_zero: bool) -> Option<()>
 where
     T: Fn(Uint128, Uint128) -> Uint128,
     U: Fn(u128, u128) -> u128,
@@ -34,7 +48,7 @@ where
             break (lib2, native2);
         }
     };
-    assert_eq!(op_lib(lib, lib2), op_native(native, native2), "native: {native}, native2: {native2}");
+    assert_eq!(op_lib_wrapping(lib, lib2), op_native_wrapping(native, native2), "native: {native}, native2: {native2}");
     Some(())
 }
 
@@ -46,49 +60,62 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(lib, native);
     }
 
-    // Full addition
-    assert_op(&mut data, Add::add, Add::add, true);
-    // Full multiplication
-    assert_op(&mut data, Mul::mul, Mul::mul, true);
-    // Full division
-    assert_op(&mut data, Div::div, Div::div, false);
-    // Full remainder
-    assert_op(&mut data, Rem::rem, Rem::rem, false);
-    // Full bitwise And
-    assert_op(&mut data, BitAnd::bitand, BitAnd::bitand, true);
-    // Full bitwise Or
-    assert_op(&mut data, BitOr::bitor, BitOr::bitor, true);
-    // Full bitwise Xor
-    assert_op(&mut data, BitXor::bitxor, BitXor::bitxor, true);
+    // Wrapping addition (F-17 fix — lib's `+` panics in debug on overflow)
+    assert_arith(
+        &mut data,
+        |a, b| a.overflowing_add(b).0,
+        u128::wrapping_add,
+        true,
+    );
+    // Wrapping multiplication
+    assert_arith(
+        &mut data,
+        |a, b| a.overflowing_mul(b).0,
+        u128::wrapping_mul,
+        true,
+    );
+    // Division — neither side overflows after the ok_by_zero guard
+    assert_arith(&mut data, Div::div, Div::div, false);
+    // Remainder — same
+    assert_arith(&mut data, Rem::rem, Rem::rem, false);
+    // Bitwise ops — never overflow, safe to use the operator directly
+    assert_arith(&mut data, BitAnd::bitand, BitAnd::bitand, true);
+    assert_arith(&mut data, BitOr::bitor, BitOr::bitor, true);
+    assert_arith(&mut data, BitXor::bitxor, BitXor::bitxor, true);
 
-    // Full bitwise Not
+    // Full bitwise Not — never overflows
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         assert_eq!(!lib, !native, "native: {native}");
     }
 
-    // u64 addition
+    // u64 addition — use overflowing on the lib side, wrapping on native
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_eq!(lib + word, native + (word as u128), "native: {native}, word: {word}");
+        let lib_sum = lib.overflowing_add_u64(word).0;
+        let native_sum = native.wrapping_add(word as u128);
+        assert_eq!(lib_sum, native_sum, "native: {native}, word: {word}");
     }
-    // U64 multiplication
+    // u64 multiplication — same pattern
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_eq!(lib * word, native * (word as u128), "native: {native}, word: {word}");
+        let lib_mul = lib.overflowing_mul_u64(word).0;
+        let native_mul = native.wrapping_mul(word as u128);
+        assert_eq!(lib_mul, native_mul, "native: {native}, word: {word}");
     }
-    // Left shift
+    // Left shift — restrict shift to 0..128 so native `<<` doesn't panic.
+    // Tests the lib's `<<` against native `<<` in the well-defined range.
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        let lshift = try_opt!(consume::<1>(&mut data))[0] as u32;
+        let lshift = (try_opt!(consume::<1>(&mut data))[0] as u32) % 128;
         assert_eq!(lib << lshift, native << lshift, "native: {native}, lshift: {lshift}");
     }
-    // Right shift
+    // Right shift — same domain restriction
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        let rshift = try_opt!(consume::<1>(&mut data))[0] as u32;
+        let rshift = (try_opt!(consume::<1>(&mut data))[0] as u32) % 128;
         assert_eq!(lib >> rshift, native >> rshift, "native: {native}, rshift: {rshift}");
     }
     // bits

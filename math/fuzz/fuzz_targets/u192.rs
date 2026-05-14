@@ -45,32 +45,40 @@ fuzz_target!(|data: &[u8]| {
     }
     let modulo = &BigUint::from_bytes_le(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
-    // Full addition
-    assert_op(&mut data, Add::add, |a, b| (a + b) % modulo, true);
-    // Full multiplication
-    assert_op(&mut data, Mul::mul, |a, b| (a * b) % modulo, true);
-    // Full division
+    // Audit/F-17 (2026-05-14): the lib's `Add`, `Mul`, `Shl`, `Shr` panic on
+    // overflow in debug-asserted builds (cargo-fuzz runs with
+    // `-Cdebug-assertions`). The BigUint comparator side does `% modulo`
+    // which never panics. Pre-fix, `lib + lib2` panicked before assert_same
+    // could fire → libFuzzer reported "crash" on every overflow input. Fix:
+    // use `overflowing_*().0` on the lib side so it wraps to match the
+    // modular BigUint result.
+
+    // Wrapping addition
+    assert_op(&mut data, |a, b| a.overflowing_add(b).0, |a, b| (a + b) % modulo, true);
+    // Wrapping multiplication
+    assert_op(&mut data, |a, b| a.overflowing_mul(b).0, |a, b| (a * b) % modulo, true);
+    // Full division — no overflow after ok_by_zero guard
     assert_op(&mut data, Div::div, |a, b| (a / b) % modulo, false);
-    // Full remainder
+    // Full remainder — same
     assert_op(&mut data, Rem::rem, |a, b| (a % b) % modulo, false);
-    // Full bitwise And
+    // Bitwise ops — never overflow
     assert_op(&mut data, BitAnd::bitand, BitAnd::bitand, true);
-    // Full bitwise Or
     assert_op(&mut data, BitOr::bitor, BitOr::bitor, true);
-    // Full bitwise Xor
     assert_op(&mut data, BitXor::bitxor, BitXor::bitxor, true);
 
-    // u64 addition
+    // u64 addition — wrapping on lib side
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib + word, (native + word) % modulo, "lib: {lib}, word: {word}");
+        let lib_sum = lib.overflowing_add_u64(word).0;
+        assert_same!(lib_sum, (native + word) % modulo, "lib: {lib}, word: {word}");
     }
-    // U64 multiplication
+    // u64 multiplication — wrapping on lib side
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib * word, (native * word) % modulo, "lib: {lib}, word: {word}");
+        let lib_mul = lib.overflowing_mul_u64(word).0;
+        assert_same!(lib_mul, (native * word) % modulo, "lib: {lib}, word: {word}");
     }
     // Left shift
     {

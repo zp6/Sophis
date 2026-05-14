@@ -824,11 +824,25 @@ The CURRENT rothschild binary's auto-keygen produces the correct Dilithium-forma
 
 **Recommendation:** delete the stale `devnet/rothschild_wallet.json` and let the throughput test regenerate it; also fix `devnet/throughput_test.py`'s output parser to match the current rothschild output line shape (`[INFO ] Generated seed <hex> and address <addr>`). Audit-machine-only; not a code finding.
 
-#### F-17 — Math fuzz harnesses panic on overflow inputs (P1 — fuzz validity)
+#### F-17 — Math fuzz harnesses panic on overflow inputs (P1 — fuzz validity) ✅ FIXED
 
 **Severity:** P1 — pre-mainnet (fuzz harness needs fixing before it can actually validate the math lib).
 **Found:** Session 5, 2026-05-14, immediately after F-15 partial fix unblocked compilation.
-**Status:** open.
+**Status:** ✅ **fixed in Session 5, 2026-05-14**. Three harness files patched:
+
+- `math/fuzz/fuzz_targets/u128.rs` — `assert_op` renamed to `assert_arith`, accepts wrapping closures on both sides. `Add::add` / `Mul::mul` replaced with `|a, b| a.overflowing_add(b).0` (lib) and `u128::wrapping_add` / `u128::wrapping_mul` (native). `+ word` / `* word` switched to `overflowing_add_u64(word).0` / `overflowing_mul_u64(word).0`. Shift restricted to `0..128` (lshift `% 128`, rshift `% 128`).
+- `math/fuzz/fuzz_targets/u192.rs` — `assert_op` calls updated to pass `|a, b| a.overflowing_add(b).0` / `|a, b| a.overflowing_mul(b).0` on the lib side; BigUint comparator already used `% modulo` so it never panicked. u64 add/mul switched to `overflowing_add_u64` / `overflowing_mul_u64`.
+- `math/fuzz/fuzz_targets/u256.rs` — same pattern; BigUint comparator uses `& mask` (where mask = 2^256 - 1) which also never overflows.
+
+**Validation result:** ✅ **6,566,677 total fuzz iterations across 3 targets in 183 s, ZERO crashes**:
+
+| Target | Iterations | Wall | Crashes |
+|---|---|---|---|
+| `u128` | 5,358,912 | 61 s | 0 |
+| `u192` | 615,092 | 61 s | 0 |
+| `u256` | 592,673 | 61 s | 0 |
+
+The math library's wrapping arithmetic, division, remainder, bitwise, and shift behavior is now genuinely validated against ground truth (native `u128.wrapping_*` for the 128-bit case; `num_bigint::BigUint` with explicit modulus/mask for the 192/256-bit cases). BlueWork (`Uint256`) is the central type behind `min_chain_work` and `max_chain_work_seen` (anti-long-range-attack), so this coverage is load-bearing for consensus safety.
 
 **Description.** With F-15's compile-time deps in place, all three math fuzz targets (`u128`, `u192`, `u256`) **compile and execute**. libFuzzer then surfaces crashes on the first input it generates for each target (exit status 77 = crash detected). Each crash produces a deterministic failing test case saved under `artifacts/<target>/crash-*`.
 
@@ -872,7 +886,8 @@ Choose the variant that matches the library's actual semantics. Same pattern for
 |---|---|---|---|
 | Phase 6 adversarial (post-F-14 fix) | `python devnet/test_phase6_da_attacks.py` | ✅ **13/13 threats PASS** | 164.3 s |
 | Kani formal proofs (Linux Docker) | `docker run sophis-kani-proofs` | ✅ **19/19 harnesses VERIFIED** | one-shot |
-| Math fuzz (Linux Docker, all 3 targets) | `docker run sophis-fuzz` | ⚠️ **compiles after F-15 partial fix; 3 crashes — F-17** | ~3 min |
+| Math fuzz (Linux Docker, all 3 targets) | `docker run sophis-fuzz` | ⚠️ **first run**: 3 harness crashes — F-17 | ~3 min |
+| Math fuzz (Linux Docker, after F-17 fix) | `docker run sophis-fuzz` | ✅ **6,566,677 iterations / 0 crashes** | ~3 min |
 | F-13 runtime smoke (Windows) | `dilithium-wallet keygen --network mainnet` | ✅ exit 2, no file | < 1 s |
 | F-13 runtime smoke (Windows) | `dilithium-wallet keygen --network testnet` | ✅ exit 0, file + warning | < 1 s |
 | Throughput test (Windows) | `python devnet/throughput_test.py run --tps N` | ⏳ deferred — coordination gap (F-16) | — |

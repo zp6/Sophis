@@ -44,32 +44,37 @@ fuzz_target!(|data: &[u8]| {
     }
     let mask = &BigUint::from_bytes_le(&[u8::MAX; 32]);
 
-    // Full addition
-    assert_op(&mut data, Add::add, |a, b| (a + b) & mask, true);
-    // Full multiplication
-    assert_op(&mut data, Mul::mul, |a, b| (a * b) & mask, true);
-    // Full division
+    // Audit/F-17 (2026-05-14): lib `Add`/`Mul`/`Shl`/`Shr` debug_assert on
+    // overflow; cargo-fuzz builds with `-Cdebug-assertions`. Mask-based
+    // BigUint comparator never overflows. Pre-fix the lib side panicked
+    // before assert_same could fire. Fix: use `overflowing_*().0` on lib.
+
+    // Wrapping addition
+    assert_op(&mut data, |a, b| a.overflowing_add(b).0, |a, b| (a + b) & mask, true);
+    // Wrapping multiplication
+    assert_op(&mut data, |a, b| a.overflowing_mul(b).0, |a, b| (a * b) & mask, true);
+    // Full division — no overflow after ok_by_zero guard
     assert_op(&mut data, Div::div, |a, b| (a / b) & mask, false);
-    // Full remainder
+    // Full remainder — same
     assert_op(&mut data, Rem::rem, |a, b| (a % b) & mask, false);
-    // Full bitwise And
+    // Bitwise ops — never overflow
     assert_op(&mut data, BitAnd::bitand, BitAnd::bitand, true);
-    // Full bitwise Or
     assert_op(&mut data, BitOr::bitor, BitOr::bitor, true);
-    // Full bitwise Xor
     assert_op(&mut data, BitXor::bitxor, BitXor::bitxor, true);
 
-    // u64 addition
+    // u64 addition — wrapping on lib side
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib + word, (native + word) & mask, "lib: {lib}, word: {word}");
+        let lib_sum = lib.overflowing_add_u64(word).0;
+        assert_same!(lib_sum, (native + word) & mask, "lib: {lib}, word: {word}");
     }
-    // U64 multiplication
+    // u64 multiplication — wrapping on lib side
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib * word, (native * word) & mask, "lib: {lib}, word: {word}");
+        let lib_mul = lib.overflowing_mul_u64(word).0;
+        assert_same!(lib_mul, (native * word) & mask, "lib: {lib}, word: {word}");
     }
     // Left shift
     {
