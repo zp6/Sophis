@@ -1,0 +1,351 @@
+#cloud-config
+# Sophis bootstrap node #1 — builds sophisd from source, installs systemd units,
+# configures firewall, and (since this is bootstrap1) also runs the testnet faucet.
+#
+# Paste this into the OCI console "Initialization script" field when creating
+# the instance. It runs on first boot as root.
+#
+# Target: Ubuntu 24.04 LTS on VM.Standard.A1.Flex (ARM Ampere).
+# Build time: ≈ 30–45 minutes. Watch with `sudo tail -f /var/log/cloud-init-output.log`.
+
+# ─── Packages and updates intentionally moved out of `packages:` ───────────
+# Hetzner ships fresh VMs with the clock at epoch 0 (1970) until
+# systemd-timesyncd catches up. The cloud-init `packages:` module runs
+# before timesyncd is ready, and `apt-get install` rejects HTTPS mirror
+# requests because the mirror certs look like they're decades in the
+# future. Cloud-init does NOT retry, so the apt install silently bails
+# with exit code 100 and nothing else runs.
+#
+# Workaround: skip `package_update` / `package_upgrade` / `packages:` at
+# this stage. The first runcmd step waits for the clock + runs apt with
+# retries. See runcmd item 0.
+
+# ─── User: 'sophis' (non-login system user) ────────────────────────────────
+users:
+  - default
+  - name: sophis
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/sophis
+    create_home: true
+
+# ─── Write static files ────────────────────────────────────────────────────
+write_files:
+  - path: /etc/systemd/system/sophisd-mainnet.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Sophis Node (mainnet)
+      Documentation=https://sophis.org/docs.html
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=sophis
+      Group=sophis
+      WorkingDirectory=/var/lib/sophis
+      ExecStart=/usr/local/bin/sophisd \
+          --appdir=/var/lib/sophis/mainnet \
+          --logdir=/var/lib/sophis/mainnet/logs \
+          --listen=0.0.0.0:46111 \
+          --rpclisten=127.0.0.1:46110 \
+          --rpclisten-borsh=127.0.0.1:47110 \
+          --rpclisten-json=127.0.0.1:48110 \
+          --utxoindex \
+          --disable-upnp \
+          --loglevel=info
+
+      Restart=on-failure
+      RestartSec=10
+      StartLimitBurst=5
+      StartLimitIntervalSec=60
+      KillSignal=SIGTERM
+      TimeoutStopSec=120
+
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      ReadWritePaths=/var/lib/sophis
+      DevicePolicy=closed
+      LockPersonality=true
+      RestrictRealtime=true
+      RestrictNamespaces=true
+      RestrictSUIDSGID=true
+      SystemCallArchitectures=native
+
+      LimitNOFILE=65536
+      MemoryMax=4G
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/sophisd-testnet.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Sophis Node (testnet)
+      Documentation=https://sophis.org/docs.html
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=sophis
+      Group=sophis
+      WorkingDirectory=/var/lib/sophis
+      ExecStart=/usr/local/bin/sophisd \
+          --testnet \
+          --appdir=/var/lib/sophis/testnet \
+          --logdir=/var/lib/sophis/testnet/logs \
+          --listen=0.0.0.0:46211 \
+          --rpclisten=127.0.0.1:46210 \
+          --rpclisten-borsh=127.0.0.1:47210 \
+          --rpclisten-json=127.0.0.1:48210 \
+          --utxoindex \
+          --disable-upnp \
+          --loglevel=info
+
+      Restart=on-failure
+      RestartSec=10
+      StartLimitBurst=5
+      StartLimitIntervalSec=60
+      KillSignal=SIGTERM
+      TimeoutStopSec=120
+
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      ReadWritePaths=/var/lib/sophis
+      DevicePolicy=closed
+      LockPersonality=true
+      RestrictRealtime=true
+      RestrictNamespaces=true
+      RestrictSUIDSGID=true
+      SystemCallArchitectures=native
+
+      LimitNOFILE=65536
+      MemoryMax=4G
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/cron.daily/sophis-bootstrap-healthcheck
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Daily healthcheck — logs node status; does NOT email (uses UptimeRobot for alerts)
+      set -e
+      mkdir -p /var/log/sophis
+      {
+          echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+          systemctl is-active sophisd-mainnet sophisd-testnet || true
+          ss -tlnp 2>/dev/null | grep -E ':(46111|46211)\s' || true
+          df -h /var/lib/sophis | tail -1
+      } >> /var/log/sophis/healthcheck.log
+
+  - path: /etc/logrotate.d/sophis
+    permissions: '0644'
+    owner: root:root
+    content: |
+      /var/log/sophis/*.log /var/lib/sophis/*/logs/*.log {
+          weekly
+          rotate 4
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+      }
+
+  - path: /etc/sysctl.d/99-sophis.conf
+    permissions: '0644'
+    owner: root:root
+    content: |
+      # TCP tuning for many P2P connections
+      net.core.somaxconn=4096
+      net.ipv4.tcp_max_syn_backlog=4096
+      net.core.netdev_max_backlog=4096
+      net.ipv4.tcp_fin_timeout=15
+      net.ipv4.ip_local_port_range=10000 65535
+
+# ─── First-boot commands ───────────────────────────────────────────────────
+runcmd:
+  # 0. Wait for clock sync, then install packages with retries.
+  # Hetzner ships VMs with the clock at epoch 0 (1970) until timesyncd
+  # catches up; apt rejects HTTPS mirrors as "expired" until then.
+  #
+  # Package note: iptables-persistent + netfilter-persistent are NOT
+  # in the list — ufw 0.36.2-6 on Ubuntu 24.04 declares Breaks against
+  # both (they manage netfilter rules in conflicting ways). ufw alone
+  # already persists its own rules via its systemd unit.
+  - |
+    set -e
+    timedatectl set-ntp true || true
+    for i in 1 2 3 4 5 6; do
+      if timedatectl status 2>/dev/null | grep -q 'System clock synchronized: yes'; then
+        break
+      fi
+      sleep 5
+    done
+    export DEBIAN_FRONTEND=noninteractive
+    APT_OK=0
+    for i in 1 2 3; do
+      if apt-get update && apt-get install -y --no-install-recommends \
+          build-essential cmake clang libclang-dev libssl-dev pkg-config \
+          protobuf-compiler git curl jq ufw fail2ban unattended-upgrades \
+          nginx certbot python3-certbot-nginx logrotate zram-tools; then
+        APT_OK=1
+        break
+      fi
+      echo "apt attempt $i failed, sleeping 30s and retrying..."
+      sleep 30
+    done
+    # Fail loud + early if apt couldn't deliver. Otherwise we waste 60min
+    # on rustup/git/cargo before bailing at "linker cc not found".
+    if [ "$APT_OK" != "1" ] || ! command -v cc >/dev/null; then
+      echo "FATAL: apt install failed or cc missing — aborting cloud-init" >&2
+      exit 1
+    fi
+
+  # 1. Sysctl
+  - sysctl -p /etc/sysctl.d/99-sophis.conf
+
+  # 1.5. Swap file (sized for 4 GB RAM hosts like Hetzner CX22).
+  # Harmless on larger hosts (just ~8 GB of disk that gets paged-in lazily).
+  # Sophis builds with rocksdb-bindgen + risc0 spike memory; without swap
+  # CARGO_BUILD_JOBS=1 + 4 GB RAM still OOMs on the linker step.
+  - |
+    if ! swapon --show=NAME --noheadings | grep -q /swapfile; then
+      fallocate -l 8G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+
+  # 2. Data dirs
+  - install -d -o sophis -g sophis -m 0750
+      /var/lib/sophis
+      /var/lib/sophis/mainnet
+      /var/lib/sophis/mainnet/logs
+      /var/lib/sophis/testnet
+      /var/lib/sophis/testnet/logs
+      /var/lib/sophis-faucet
+      /var/log/sophis
+
+  # 2.5. Belt-and-suspenders: force sophis user's home to /var/lib/sophis
+  # in /etc/passwd. Some cloud-init versions ignore `home:` when
+  # `system: true` is set and leave the user pointing at /home/sophis
+  # (which we never create). Without this, `sudo -u sophis curl | sh`
+  # in step 3 will try to write to /home/sophis/.rustup and fail with
+  # "Permission denied". Safe to run even if home is already correct.
+  - usermod -d /var/lib/sophis sophis 2>/dev/null || true
+
+  # 3. Install Rust as the sophis user
+  - sudo -u sophis bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal'
+  - echo 'export CARGO_BUILD_JOBS=1' | sudo -u sophis tee -a /var/lib/sophis/.bashrc
+
+  # 4. Clone Sophis
+  - sudo -u sophis git clone --depth=1 --branch main https://github.com/sophis-network/Sophis /var/lib/sophis/src
+
+  # 5. Build binaries (sophisd + testnet-faucet + dilithium-wallet)
+  #    LIBCLANG_PATH needed for rocksdb-bindgen
+  - |
+    sudo -u sophis bash -lc '
+      export LIBCLANG_PATH=$(llvm-config --libdir 2>/dev/null || echo /usr/lib/llvm-18/lib)
+      export CARGO_BUILD_JOBS=1
+      cd /var/lib/sophis/src
+      ~/.cargo/bin/cargo build --release -p sophisd -p testnet-faucet -p dilithium-wallet
+    '
+
+  # 6. Install binaries to /usr/local/bin
+  - install -m 0755 /var/lib/sophis/src/target/release/sophisd          /usr/local/bin/sophisd
+  - install -m 0755 /var/lib/sophis/src/target/release/testnet-faucet   /usr/local/bin/testnet-faucet
+  - install -m 0755 /var/lib/sophis/src/target/release/dilithium-wallet /usr/local/bin/dilithium-wallet
+
+  # 7. Configure ufw (host firewall) — defense-in-depth on top of OCI Security List
+  - ufw --force default deny incoming
+  - ufw --force default allow outgoing
+  - ufw allow 22/tcp                                comment 'SSH'
+  - ufw allow 80/tcp                                comment 'HTTP (ACME + redirect)'
+  - ufw allow 443/tcp                               comment 'HTTPS faucet'
+  - ufw allow 46111/tcp                             comment 'Sophis mainnet P2P'
+  - ufw allow 46111/udp                             comment 'Sophis mainnet P2P (UDP discovery)'
+  - ufw allow 46211/tcp                             comment 'Sophis testnet P2P'
+  - ufw allow 46211/udp                             comment 'Sophis testnet P2P (UDP discovery)'
+  - ufw --force enable
+
+  # 9. Generate faucet wallet (testnet)
+  - |
+    if [ ! -f /var/lib/sophis-faucet/wallet.json ]; then
+      sudo -u sophis /usr/local/bin/testnet-faucet generate-wallet \
+          --wallet /var/lib/sophis-faucet/wallet.json \
+          --network testnet
+      chmod 600 /var/lib/sophis-faucet/wallet.json
+      chown sophis:sophis /var/lib/sophis-faucet/wallet.json
+    fi
+
+  # 10. Faucet systemd unit (copied from testnet-faucet/deploy/faucet.service in repo)
+  - install -m 0644 /var/lib/sophis/src/testnet-faucet/deploy/faucet.service /etc/systemd/system/faucet.service
+
+  # 11. nginx vhost — copy and replace placeholders
+  - install -m 0644 /var/lib/sophis/src/testnet-faucet/deploy/nginx-faucet.sophis.org.conf /etc/nginx/sites-available/faucet.sophis.org
+  - ln -sf /etc/nginx/sites-available/faucet.sophis.org /etc/nginx/sites-enabled/faucet.sophis.org
+  - rm -f /etc/nginx/sites-enabled/default
+  # Rate limit zones
+  - |
+    cat > /etc/nginx/conf.d/00-faucet-rate-limits.conf <<'EOF'
+    limit_req_zone $binary_remote_addr zone=faucet_drip:10m rate=6r/m;
+    limit_req_zone $binary_remote_addr zone=faucet_browse:10m rate=60r/m;
+    EOF
+  # Comment out the ssl_certificate lines temporarily so nginx can start before certbot runs
+  - sed -i 's|^\s*ssl_certificate|#&|g' /etc/nginx/sites-available/faucet.sophis.org
+  - sed -i 's|listen 443 ssl http2;|#&|g; s|listen \[::\]:443 ssl http2;|#&|g' /etc/nginx/sites-available/faucet.sophis.org
+  - nginx -t && systemctl restart nginx
+
+  # 12. ZRAM (sysadmin sanity for the 12GB box)
+  - sed -i 's/#PERCENT=.*/PERCENT=25/' /etc/default/zramswap || true
+  - systemctl enable --now zramswap || true
+
+  # 13. fail2ban — protect SSH
+  - systemctl enable --now fail2ban
+
+  # 14. Enable + start sophisd services
+  - systemctl daemon-reload
+  - systemctl enable --now sophisd-mainnet.service
+  - systemctl enable --now sophisd-testnet.service
+  # Wait for testnet RPC to be ready before starting the faucet (which needs it)
+  - sleep 30
+  - systemctl enable --now faucet.service
+
+  # 15. Marker file so external monitoring can detect cloud-init completion
+  - echo "Sophis bootstrap node ready at $(date -u)" > /var/log/sophis/cloud-init-done.log
+
+# ─── Final touches ─────────────────────────────────────────────────────────
+final_message: |
+  =================================================
+  Sophis bootstrap node #1 (with faucet) ready.
+
+  Next steps (run from your workstation):
+
+    1. Verify services:
+       ssh ubuntu@<this-vm-ip> 'systemctl is-active sophisd-mainnet sophisd-testnet faucet'
+
+    2. Set the faucet.sophis.org DNS record (Cloudflare → A → proxied ON)
+       to the public IP of this VM, then run certbot:
+
+       ssh ubuntu@<this-vm-ip>
+       sudo certbot --nginx -d faucet.sophis.org --non-interactive \
+           --agree-tos --email ops@example.org --redirect --hsts
+
+    3. Fund the faucet wallet — its address is in:
+       sudo jq -r .address /var/lib/sophis-faucet/wallet.json
+
+  Build duration: $UPTIME seconds since boot
+  =================================================

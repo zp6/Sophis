@@ -1,0 +1,51 @@
+[Unit]
+Description=Sophis Node (testnet)
+Documentation=https://sophis.org/docs.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sophis
+Group=sophis
+WorkingDirectory=/var/lib/sophis
+ExecStart=/usr/local/bin/sophisd \
+    --testnet \
+    --appdir=/var/lib/sophis/testnet \
+    --logdir=/var/lib/sophis/testnet/logs \
+    --listen=0.0.0.0:46211 \
+    --rpclisten=127.0.0.1:46210 \
+    --rpclisten-borsh=127.0.0.1:47210 \
+    --rpclisten-json=127.0.0.1:48210 \
+    --utxoindex \
+    --disable-upnp \
+    --loglevel=info
+
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Graceful shutdown — RocksDB needs time to flush
+KillSignal=SIGTERM
+TimeoutStopSec=120
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/sophis
+DevicePolicy=closed
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=8G
+
+[Install]
+WantedBy=multi-user.target

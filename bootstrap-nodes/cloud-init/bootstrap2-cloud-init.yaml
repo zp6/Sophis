@@ -1,0 +1,274 @@
+#cloud-config
+# Sophis bootstrap node #2 — node-only (no faucet, no nginx).
+# Mirrors bootstrap1 but lighter — same sophisd mainnet+testnet services.
+#
+# Paste this into the OCI console "Initialization script" field when creating
+# bootstrap2 in your second region (e.g. Ashburn).
+
+# Packages and updates intentionally moved out of `packages:` —
+# Hetzner ships fresh VMs with the clock at 1970 until timesyncd
+# catches up, which makes the early-stage apt install fail with
+# HTTPS cert errors. See bootstrap1 cloud-init for the long version.
+# The first runcmd item handles this with NTP wait + apt retries.
+
+users:
+  - default
+  - name: sophis
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/sophis
+    create_home: true
+
+write_files:
+  - path: /etc/systemd/system/sophisd-mainnet.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Sophis Node (mainnet)
+      Documentation=https://sophis.org/docs.html
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=sophis
+      Group=sophis
+      WorkingDirectory=/var/lib/sophis
+      ExecStart=/usr/local/bin/sophisd \
+          --appdir=/var/lib/sophis/mainnet \
+          --logdir=/var/lib/sophis/mainnet/logs \
+          --listen=0.0.0.0:46111 \
+          --rpclisten=127.0.0.1:46110 \
+          --rpclisten-borsh=127.0.0.1:47110 \
+          --rpclisten-json=127.0.0.1:48110 \
+          --utxoindex \
+          --disable-upnp \
+          --loglevel=info
+
+      Restart=on-failure
+      RestartSec=10
+      StartLimitBurst=5
+      StartLimitIntervalSec=60
+      KillSignal=SIGTERM
+      TimeoutStopSec=120
+
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      ReadWritePaths=/var/lib/sophis
+      DevicePolicy=closed
+      LockPersonality=true
+      RestrictRealtime=true
+      RestrictNamespaces=true
+      RestrictSUIDSGID=true
+      SystemCallArchitectures=native
+
+      LimitNOFILE=65536
+      MemoryMax=4G
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/sophisd-testnet.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Sophis Node (testnet)
+      Documentation=https://sophis.org/docs.html
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=sophis
+      Group=sophis
+      WorkingDirectory=/var/lib/sophis
+      ExecStart=/usr/local/bin/sophisd \
+          --testnet \
+          --appdir=/var/lib/sophis/testnet \
+          --logdir=/var/lib/sophis/testnet/logs \
+          --listen=0.0.0.0:46211 \
+          --rpclisten=127.0.0.1:46210 \
+          --rpclisten-borsh=127.0.0.1:47210 \
+          --rpclisten-json=127.0.0.1:48210 \
+          --utxoindex \
+          --disable-upnp \
+          --loglevel=info
+
+      Restart=on-failure
+      RestartSec=10
+      StartLimitBurst=5
+      StartLimitIntervalSec=60
+      KillSignal=SIGTERM
+      TimeoutStopSec=120
+
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      ReadWritePaths=/var/lib/sophis
+      DevicePolicy=closed
+      LockPersonality=true
+      RestrictRealtime=true
+      RestrictNamespaces=true
+      RestrictSUIDSGID=true
+      SystemCallArchitectures=native
+
+      LimitNOFILE=65536
+      MemoryMax=4G
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/cron.daily/sophis-bootstrap-healthcheck
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -e
+      mkdir -p /var/log/sophis
+      {
+          echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+          systemctl is-active sophisd-mainnet sophisd-testnet || true
+          ss -tlnp 2>/dev/null | grep -E ':(46111|46211)\s' || true
+          df -h /var/lib/sophis | tail -1
+      } >> /var/log/sophis/healthcheck.log
+
+  - path: /etc/logrotate.d/sophis
+    permissions: '0644'
+    owner: root:root
+    content: |
+      /var/log/sophis/*.log /var/lib/sophis/*/logs/*.log {
+          weekly
+          rotate 4
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+      }
+
+  - path: /etc/sysctl.d/99-sophis.conf
+    permissions: '0644'
+    owner: root:root
+    content: |
+      net.core.somaxconn=4096
+      net.ipv4.tcp_max_syn_backlog=4096
+      net.core.netdev_max_backlog=4096
+      net.ipv4.tcp_fin_timeout=15
+      net.ipv4.ip_local_port_range=10000 65535
+
+runcmd:
+  # Wait for clock sync, then install packages with retries.
+  # See header comment for the Hetzner epoch-0 clock issue.
+  # Note: iptables-persistent + netfilter-persistent removed — ufw on
+  # Ubuntu 24.04 declares Breaks against them.
+  - |
+    set -e
+    timedatectl set-ntp true || true
+    for i in 1 2 3 4 5 6; do
+      if timedatectl status 2>/dev/null | grep -q 'System clock synchronized: yes'; then
+        break
+      fi
+      sleep 5
+    done
+    export DEBIAN_FRONTEND=noninteractive
+    APT_OK=0
+    for i in 1 2 3; do
+      if apt-get update && apt-get install -y --no-install-recommends \
+          build-essential cmake clang libclang-dev libssl-dev pkg-config \
+          protobuf-compiler git curl jq ufw fail2ban unattended-upgrades \
+          logrotate zram-tools; then
+        APT_OK=1
+        break
+      fi
+      echo "apt attempt $i failed, sleeping 30s and retrying..."
+      sleep 30
+    done
+    if [ "$APT_OK" != "1" ] || ! command -v cc >/dev/null; then
+      echo "FATAL: apt install failed or cc missing — aborting cloud-init" >&2
+      exit 1
+    fi
+
+  - sysctl -p /etc/sysctl.d/99-sophis.conf
+
+  # Swap file (sized for 4 GB RAM hosts like Hetzner CX22).
+  # Harmless on larger hosts; see bootstrap1 cloud-init for the rationale.
+  - |
+    if ! swapon --show=NAME --noheadings | grep -q /swapfile; then
+      fallocate -l 8G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+
+  - install -d -o sophis -g sophis -m 0750
+      /var/lib/sophis
+      /var/lib/sophis/mainnet
+      /var/lib/sophis/mainnet/logs
+      /var/lib/sophis/testnet
+      /var/lib/sophis/testnet/logs
+      /var/log/sophis
+
+  # Belt-and-suspenders for sophis user's home — some cloud-init versions
+  # ignore the `home:` field when `system: true`. See bootstrap1 for detail.
+  - usermod -d /var/lib/sophis sophis 2>/dev/null || true
+
+  - sudo -u sophis bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal'
+  - echo 'export CARGO_BUILD_JOBS=1' | sudo -u sophis tee -a /var/lib/sophis/.bashrc
+
+  - sudo -u sophis git clone --depth=1 --branch main https://github.com/sophis-network/Sophis /var/lib/sophis/src
+
+  - |
+    sudo -u sophis bash -lc '
+      export LIBCLANG_PATH=$(llvm-config --libdir 2>/dev/null || echo /usr/lib/llvm-18/lib)
+      export CARGO_BUILD_JOBS=1
+      cd /var/lib/sophis/src
+      ~/.cargo/bin/cargo build --release -p sophisd
+    '
+
+  - install -m 0755 /var/lib/sophis/src/target/release/sophisd /usr/local/bin/sophisd
+
+  - ufw --force default deny incoming
+  - ufw --force default allow outgoing
+  - ufw allow 22/tcp     comment 'SSH'
+  - ufw allow 46111/tcp  comment 'Sophis mainnet P2P'
+  - ufw allow 46111/udp  comment 'Sophis mainnet P2P (UDP discovery)'
+  - ufw allow 46211/tcp  comment 'Sophis testnet P2P'
+  - ufw allow 46211/udp  comment 'Sophis testnet P2P (UDP discovery)'
+  - ufw --force enable
+
+  - sed -i 's/#PERCENT=.*/PERCENT=25/' /etc/default/zramswap || true
+  - systemctl enable --now zramswap || true
+
+  - systemctl enable --now fail2ban
+
+  - systemctl daemon-reload
+  - systemctl enable --now sophisd-mainnet.service
+  - systemctl enable --now sophisd-testnet.service
+
+  # NB: single-quoted YAML scalar so the `#` in "node #2" is not eaten as a comment.
+  - 'echo "Sophis bootstrap node 2 ready at $(date -u)" > /var/log/sophis/cloud-init-done.log'
+
+final_message: |
+  =================================================
+  Sophis bootstrap node #2 (node-only) ready.
+
+  Next steps:
+
+    1. Verify services:
+       ssh ubuntu@<this-vm-ip> 'systemctl is-active sophisd-mainnet sophisd-testnet'
+
+    2. Optionally pin this node to bootstrap1 for guaranteed peering:
+
+       ssh ubuntu@<this-vm-ip>
+       sudo sed -i "s|--utxoindex|--utxoindex --connect=<bootstrap1-ip>:46111|" \
+           /etc/systemd/system/sophisd-mainnet.service
+       sudo systemctl daemon-reload && sudo systemctl restart sophisd-mainnet
+
+  Build duration: $UPTIME seconds since boot
+  =================================================

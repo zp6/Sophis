@@ -1,0 +1,51 @@
+[Unit]
+Description=Sophis Testnet Faucet
+Documentation=https://github.com/sophis-network/Sophis/tree/main/testnet-faucet
+After=network-online.target sophisd-testnet.service
+Wants=network-online.target
+Requires=sophisd-testnet.service
+
+[Service]
+Type=simple
+User=sophis
+Group=sophis
+WorkingDirectory=/var/lib/sophis-faucet
+ExecStart=/usr/local/bin/testnet-faucet start \
+    --wallet=/var/lib/sophis-faucet/wallet.json \
+    --rpcserver=127.0.0.1:46210 \
+    --network=testnet \
+    --port=8181 \
+    --amount=1000000000 \
+    --cooldown=86400 \
+    --history=/var/lib/sophis-faucet/history.json
+
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/sophis-faucet
+DevicePolicy=closed
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+# The wallet file contains the secret key — never world-readable
+# Setup script should: chown sophis:sophis wallet.json && chmod 600 wallet.json
+
+# Bind only to loopback — nginx is the public-facing surface
+# (faucet code already binds to 0.0.0.0 by default; nginx is on the same host)
+Environment=RUST_LOG=info
+
+LimitNOFILE=8192
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
