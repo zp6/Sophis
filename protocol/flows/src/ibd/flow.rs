@@ -76,7 +76,12 @@ struct QueueChunkOutput {
     daa_score: u64,
     timestamp: u64,
 }
-// TODO: define a peer banning strategy
+// Audit/F-12 (Session 10, 2026-05-15): peer banning strategy is now
+// defined in `sophis_addressmanager::peer_score`. Flow errors below
+// flow through `Flow::launch` → `FlowContext::handle_flow_error`,
+// which classifies the ProtocolError and increments a per-IP score;
+// repeat-offenders cross the threshold and are persistently banned
+// via the existing `ConnectionManager.ban` path.
 
 impl IbdFlow {
     pub fn new(

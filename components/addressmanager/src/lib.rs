@@ -1,3 +1,4 @@
+pub mod peer_score;
 mod port_mapping_extender;
 mod stores;
 extern crate self as address_manager;

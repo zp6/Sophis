@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use parking_lot::{Mutex, RwLock};
 use sophis_addressmanager::AddressManager;
+use sophis_addressmanager::peer_score::{MisbehaviorReason, PeerScoreManager, RecordOutcome};
 use sophis_connectionmanager::ConnectionManager;
 use sophis_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use sophis_consensus_core::block::Block;
@@ -217,6 +218,11 @@ pub struct FlowContextInner {
     is_ibd_running: Arc<AtomicBool>,
     ibd_metadata: Arc<RwLock<Option<IbdMetadata>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
+    /// Audit/F-12 (Session 10, 2026-05-15): per-IP misbehavior score
+    /// manager. Promotes repeated `disconnect` events to a persistent
+    /// ban via the existing `ConnectionManager.ban` path. See
+    /// `sophis_addressmanager::peer_score` for policy details.
+    pub peer_score: Arc<PeerScoreManager>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
@@ -326,6 +332,7 @@ impl FlowContext {
                 ibd_metadata: Default::default(),
                 hub,
                 address_manager,
+                peer_score: Arc::new(PeerScoreManager::new()),
                 connection_manager: Default::default(),
                 mining_manager,
                 tick_service,
@@ -364,6 +371,45 @@ impl FlowContext {
 
     pub fn drop_connection_manager(&self) {
         self.connection_manager.write().take();
+    }
+
+    /// Audit/F-12 (Session 10, 2026-05-15): single source of truth for
+    /// "peer misbehaved, what now?" Called by `Flow::launch` after a
+    /// flow returns `Err(ProtocolError)`. Classifies the error,
+    /// records a per-IP score, and promotes the disconnect to a
+    /// persistent ban when the score crosses
+    /// [`sophis_addressmanager::peer_score::BAN_SCORE_THRESHOLD`].
+    ///
+    /// The ban path uses the existing `ConnectionManager.ban(ip)`
+    /// which (a) terminates all active peers from the same IP, (b)
+    /// writes to `BannedAddressesStore` with a 24 h auto-expiry, and
+    /// (c) evicts the IP from the address store so the node won't
+    /// redial it.
+    pub async fn handle_flow_error(&self, err: &ProtocolError, router: &Router) {
+        let reason = classify_protocol_error(err);
+        // Benign causes (connection closed, capacity reached, peer-already-
+        // exists during handshake, etc.) don't move the score. Skip the
+        // bookkeeping entirely to keep the hot path cheap.
+        if matches!(reason, MisbehaviorReason::Benign) {
+            return;
+        }
+        let ip = router.net_address().ip();
+        let outcome = self.peer_score.record(ip, reason);
+        if let RecordOutcome::BanTriggered { final_score } = outcome {
+            warn!("Banning peer {} (ip={}, score={}, last reason={:?})", router, ip, final_score, reason);
+            // Extract the Arc and drop the guard before the await so
+            // the future captured by tokio::spawn stays `Send`.
+            let cm = self.connection_manager.read().clone();
+            if let Some(cm) = cm {
+                cm.ban(ip).await;
+            } else {
+                // No connection manager wired (rare; test builds and the
+                // very early bring-up window): persist the ban directly
+                // through the address manager so the score-triggered
+                // verdict still sticks across the gap.
+                self.address_manager.lock().ban(ip.into());
+            }
+        }
     }
 
     pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
@@ -695,9 +741,59 @@ impl FlowContext {
     }
 }
 
+/// Audit/F-12 (Session 10, 2026-05-15): map a `ProtocolError` to the
+/// appropriate `MisbehaviorReason` so the score policy stays out of the
+/// `flow_trait` hot path. Adding a new ProtocolError variant requires
+/// adding a row here (or accepting the `Benign` default).
+fn classify_protocol_error(err: &ProtocolError) -> MisbehaviorReason {
+    match err {
+        // Severe — single occurrence triggers ban
+        ProtocolError::RuleError(_) | ProtocolError::ConsensusError(_) | ProtocolError::PruningImportError(_) => {
+            MisbehaviorReason::Severe
+        }
+
+        // High — accumulates to ban within ~2 events
+        ProtocolError::VersionMismatch(_, _)
+        | ProtocolError::WrongNetwork(_, _)
+        | ProtocolError::MisbehavingPeer(_)
+        | ProtocolError::UnexpectedMessage(_, _)
+        | ProtocolError::NoRouteForMessageType(_) => MisbehaviorReason::HighSeverity,
+
+        // Medium — recoverable misbehavior
+        ProtocolError::ConversionError(_) | ProtocolError::Rejected(_) => MisbehaviorReason::MediumSeverity,
+
+        // Low — soft errors
+        ProtocolError::Timeout(_)
+        | ProtocolError::IncomingRouteCapacityReached(_, _)
+        | ProtocolError::OutgoingRouteCapacityReached(_)
+        | ProtocolError::MiningManagerError(_) => MisbehaviorReason::LowSeverity,
+
+        // Benign — connection closed, duplicate/loopback during handshake,
+        // ignorable rejects (peer politely saying "I don't want this"), or
+        // unstructured `Other`/`OtherOwned` codes that don't carry a
+        // misbehavior signal.
+        ProtocolError::ConnectionClosed
+        | ProtocolError::IgnorableReject(_)
+        | ProtocolError::PeerAlreadyExists(_)
+        | ProtocolError::LoopbackConnection(_)
+        | ProtocolError::IdentityError(_)
+        | ProtocolError::Other(_)
+        | ProtocolError::OtherOwned(_) => MisbehaviorReason::Benign,
+    }
+}
+
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
+        // Audit/F-12 (Session 10, 2026-05-15): reject banned peers
+        // *before* spending CPU on the handshake. Reuses the existing
+        // BannedAddressesStore (24h auto-expiry) so operator-issued
+        // RPC bans and policy-triggered bans share the same gate.
+        let peer_ip = router.net_address().ip();
+        if self.address_manager.lock().is_banned(peer_ip.into()) {
+            return Err(ProtocolError::OtherOwned(format!("peer {peer_ip} is banned; refusing handshake")));
+        }
+
         // Build the handshake object and subscribe to handshake messages
         let mut handshake = SophisdHandshake::new(&router);
 
@@ -763,7 +859,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {
-            flow.launch();
+            flow.launch(Some(self.clone()));
         }
 
         if router.is_outbound() || peer_version.address.is_some() {
